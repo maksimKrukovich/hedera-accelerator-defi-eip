@@ -18,12 +18,16 @@ import "../common/safe-HTS/SafeHTS.sol";
  * The contract that helps to maintain reward token balances.
  */
 abstract contract TokenBalancer is AccessControl {
+    // Allocation percentages for rebalance
     mapping(address => uint256 allocationPercentage) internal targetPercentages;
 
+    // Price ids for every reward token in terms of Pyth oracle
     mapping(address => bytes32 priceId) public priceIds;
 
+    // Swap paths for every reward token in terms of Saucer Swap
     mapping(address => address[]) public swapPaths;
 
+    // Reward token prices
     mapping(address => uint256) public tokenPrices;
 
     // Saucer Swap
@@ -95,6 +99,8 @@ abstract contract TokenBalancer is AccessControl {
 
     /**
      * @dev Rebalances reward balances.
+     *
+     * @param _rewardTokens The reward tokens array.
      */
     function rebalance(address[] calldata _rewardTokens) external {
         uint256 rewardTokensSize = _rewardTokens.length;
@@ -121,6 +127,7 @@ abstract contract TokenBalancer is AccessControl {
     /**
      * @dev Swaps extra reward balance to WHBAR token for future rebalance.
      *
+     * @param _rewardTokens The reward tokens array.
      */
     function _swapExtraRewardSupplyToTransitionToken(address[] calldata _rewardTokens) public {
         address token;
@@ -156,6 +163,13 @@ abstract contract TokenBalancer is AccessControl {
         }
     }
 
+    /**
+     * @dev Swaps extra reward balance to WHBAR token for future rebalance.
+     *
+     * @param _tokenPrices The token prices array.
+     * @param _rewardTokens The reward tokens array.
+     * @param rewardTokensSize The cashed size of reward tokens to save gas.
+     */
     function _rebalance(
         uint256[] memory _tokenPrices,
         address[] calldata _rewardTokens,
@@ -186,8 +200,13 @@ abstract contract TokenBalancer is AccessControl {
         return swapAmounts;
     }
 
-    // Utility function to update target percentages
-    function setTargetPercentage(address token, uint256 percentage) external {
+    /**
+     * @dev Sets a target percentage for a reward token.
+     *
+     * @param token The token address.
+     * @param percentage The allocation percentage.
+     */
+    function setAllocationPercentage(address token, uint256 percentage) external {
         require(percentage < 10000, "Percentage exceeds 100%");
         require(token != address(0), "Invalid token address");
         targetPercentages[token] = percentage;
