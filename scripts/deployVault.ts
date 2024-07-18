@@ -67,6 +67,13 @@ async function main() {
   //   feePercentage: 1000,
   // };
 
+  // const feeConfig = {
+  //   receiver: "0x091b4a7ea614a3bd536f9b62ad5641829a1b174f",
+  //   token: "0x" + stakingToken!.toSolidityAddress(),
+  //   minAmount: 0,
+  //   feePercentage: 1000,
+  // };
+
   // const HederaVault = await ethers.getContractFactory("HederaVault");
   // const hederaVault = await HederaVault.deploy(
   //   stakingTokenAddress,
