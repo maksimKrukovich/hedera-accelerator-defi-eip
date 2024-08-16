@@ -13,7 +13,7 @@ import "../common/safe-HTS/IHederaTokenService.sol";
 /**
  * @title Locker
  *
- * The contract which allows to stake HTS tokens and claim a reward token
+ * The contract which allows to stake single ERC20/HTS token and claim a reward tokens
  * according to the configured locking period.
  */
 contract Locker is Ownable {
@@ -30,6 +30,15 @@ contract Locker is Ownable {
     event Staked(address indexed user, address indexed token, uint256 amount);
 
     /**
+     * @notice Reward added event.
+     * @dev Emitted when owner adds an asset.
+     *
+     * @param token The added token address.
+     * @param amount The added amount.
+     */
+    event RewardAdded(address indexed token, uint256 amount);
+
+    /**
      * @notice Withdraw event.
      * @dev Emitted when user withdraws an asset.
      *
@@ -44,250 +53,238 @@ contract Locker is Ownable {
      * @dev Emitted when user claims reward.
      *
      * @param user The user address.
+     * @param token The claimed token.
      * @param amount The claimed amount.
      */
-    event Claim(address indexed user, uint256 amount);
+    event Claim(address indexed user, address indexed token, uint256 amount);
 
-    /**
-     * @notice RewardsDurationUpdated event.
-     * @dev Emitted when the owner updates reward duration.
-     *
-     * @param duration The new reward duration.
-     * @param amount The reward amount.
-     */
-    event RewardsDurationUpdated(uint64 duration, uint256 amount);
-
-    /**
-     * @notice NotifiedRewardAmount event.
-     * @dev Emitted when the owner updates locking configuration.
-     *
-     * @param finishAt The end of the locking period.
-     * @param updatedAt The timestamp of update.
-     * @param amount The reward amount.
-     */
-    event NotifiedRewardAmount(uint64 finishAt, uint64 updatedAt, uint256 amount);
-
+    // Throws if a token is not added by the owner
     error TokenNotSupported(address _token);
 
-    // Reward token
-    IERC20 public rewardsToken;
+    // Throws if a user tries to unlock the staked amount before reaching lock period
+    error LockPeriodNotReached(uint256 lockPeriodReachedAt);
 
-    // Duration of rewards to be paid out (in seconds)
-    uint64 public duration;
-    // Timestamp of when the rewards finish
-    uint64 public finishAt;
-    // Minimum of last updated time and reward finish time
-    uint64 public updatedAt;
-    // Reward to be paid out per second
-    uint64 public rewardRate;
-    // Sum of (reward rate * dt * 1e18 / total supply)
-    mapping(address token => uint256 reward) rewardPerTokenStored;
-    // User address => Token address => rewardPerTokenStored
-    mapping(address user => mapping(address token => uint256 paidReward)) public userRewardPerTokenPaid;
-    // User address => Token address => Rewards to be claimed
-    mapping(address user => mapping(address token => uint256 reward)) public rewards;
+    // The max number of supported reward tokens
+    uint8 internal constant MAX_SUPPORTED_TOKENS_NUMBER = 20;
 
-    // Staking tokens
-    address[] public tokens;
+    // Staking token
+    address internal stakingToken;
+
+    // Lock Duration
+    uint64 internal lockPeriod;
 
     // Total staked
-    mapping(address token => uint256 totalSupply) public totalSupply;
-    // User address => Token address => Staked amount
-    mapping(address user => mapping(address token => uint256 balance)) public balanceOf;
+    uint256 internal totalStaked;
+
+    // Reward tokens
+    address[] internal rewardTokens;
+
+    // UserInfo Struct
+    struct UserInfo {
+        uint256 shares;
+        mapping(address => uint256) lastClaimedAmount;
+        uint256 lockTimeStart;
+    }
+
+    // RewardsInfo struct
+    struct RewardsInfo {
+        uint256 amount;
+        bool exist;
+    }
+
+    // User address => User Info
+    mapping(address => UserInfo) internal userContribution;
+
+    // Reward token address => Rewards Info
+    mapping(address => RewardsInfo) internal rewardsInfoByToken;
 
     /**
-     * @dev Initializes contract with passed parameters and performs association.
+     * @dev Initializes the contract with the required parameters.
      *
-     * @param _rewardToken The address of the reward token.
-     * @param _tokens The addresses of staking tokens.
+     * @param _stakingToken The staking token address.
+     * @param _rewardTokens The reward tokens.
+     * @param _lockPeriod The initial lock period.
      */
-    constructor(address _rewardToken, address[] memory _tokens) payable Ownable(msg.sender) {
-        require(_rewardToken != address(0), "Locker: reward token cannot be zero address");
-        require(_tokens.length > 0 && _tokens.length < 20, "Locker: incorrect number of tokens");
+    constructor(
+        address _stakingToken,
+        address[] memory _rewardTokens,
+        uint256 _lockPeriod
+    ) payable Ownable(msg.sender) {
+        require(_stakingToken != address(0), "Locker: staking token cannot be zero address");
+        require(_lockPeriod != 0, "Locker: too short lock period");
+        require(
+            _rewardTokens.length > 0 && _rewardTokens.length <= MAX_SUPPORTED_TOKENS_NUMBER,
+            "Locker: incorrect number of tokens"
+        );
 
-        rewardsToken = IERC20(_rewardToken);
-        SafeHTS.safeAssociateToken(_rewardToken, address(this));
+        stakingToken = _stakingToken;
+        lockPeriod = _lockPeriod.toUint64();
+        rewardTokens = _rewardTokens;
 
-        tokens = _tokens;
-
-        uint256 tokensSize = _tokens.length;
+        uint256 tokensSize = _rewardTokens.length;
         for (uint256 i = 0; i < tokensSize; i++) {
-            SafeHTS.safeAssociateToken(tokens[i], address(this));
+            SafeHTS.safeAssociateToken(_rewardTokens[i], address(this));
+        }
+
+        SafeHTS.safeAssociateToken(_stakingToken, address(this));
+    }
+
+    /**
+     * @dev Stakes the amount of the staking token to the contract.
+     *
+     * @param _amount The amount of the staking token.
+     */
+    function stake(uint256 _amount) external {
+        require(_amount != 0, "Locker: invalid amount");
+
+        if (userContribution[msg.sender].lockTimeStart == 0) {
+            uint256 rewardsSize = rewardTokens.length;
+
+            for (uint256 i = 0; i < rewardsSize; i++) {
+                userContribution[msg.sender].lastClaimedAmount[rewardTokens[i]] = rewardsInfoByToken[rewardTokens[i]]
+                    .amount;
+            }
+
+            userContribution[msg.sender].shares = _amount;
+            userContribution[msg.sender].lockTimeStart = block.timestamp;
+            totalStaked += _amount;
+
+            SafeHTS.safeTransferToken(stakingToken, msg.sender, address(this), int64(uint64(_amount)));
+
+            emit Staked(msg.sender, stakingToken, _amount);
+        } else {
+            userContribution[msg.sender].shares += _amount;
+            userContribution[msg.sender].lockTimeStart = block.timestamp;
+            totalStaked += _amount;
+
+            claimAllReward();
+            SafeHTS.safeTransferToken(stakingToken, msg.sender, address(this), int64(uint64(_amount)));
+
+            emit Staked(msg.sender, stakingToken, _amount);
         }
     }
 
     /**
-     * @dev Updates reward values.
+     * @dev Adds the amount of the reward token to the contract.
      *
-     * @param _account The user address.
+     * @param _token The reward token address.
+     * @param _amount The amount to add.
      */
-    function _updateReward(address _account, address _token) internal {
-        rewardPerTokenStored[_token] = rewardPerToken(_token);
-        updatedAt = lastTimeRewardApplicable();
+    function addReward(address _token, uint256 _amount) external onlyOwner {
+        require(_token != address(0), "Locker: invalid token address");
+        require(_amount != 0, "Locker: invalid amount");
+        require(totalStaked != 0, "Locker: no staked token");
 
-        if (_account != address(0)) {
-            rewards[_account][_token] = earned(_account, _token);
-            userRewardPerTokenPaid[_account][_token] = rewardPerTokenStored[_token];
+        uint256 perShareRewards;
+        perShareRewards = _amount / totalStaked;
+
+        if (!rewardsInfoByToken[_token].exist) {
+            rewardTokens.push(_token);
+            rewardsInfoByToken[_token].exist = true;
+            rewardsInfoByToken[_token].amount = perShareRewards;
+            SafeHTS.safeTransferToken(_token, owner(), address(this), int64(uint64(_amount)));
+
+            emit RewardAdded(_token, _amount);
+        } else {
+            rewardsInfoByToken[_token].amount += perShareRewards;
+            SafeHTS.safeTransferToken(_token, owner(), address(this), int64(uint64(_amount)));
+
+            emit RewardAdded(_token, _amount);
         }
     }
 
     /**
-     * @dev Returns reward token balancer for the user.
+     * @dev Withdraws the staking token and automatically claims rewards.
      *
-     * @param _user The user address.
+     * @param _rewardsToClaim The tokens to claim.
+     * @param _amount The amount to withdraw.
      */
-    function getUserRewardBalance(address _user) external view returns (uint256) {
-        return rewardsToken.balanceOf(_user);
+    function _withdraw(address[] calldata _rewardsToClaim, uint256 _amount) internal {
+        claimSpecificsReward(_rewardsToClaim);
+
+        SafeHTS.safeTransferToken(address(stakingToken), address(this), msg.sender, int64(uint64(_amount)));
+
+        userContribution[msg.sender].shares -= _amount;
+        totalStaked -= _amount;
+
+        emit Withdraw(msg.sender, address(stakingToken), _amount);
     }
 
     /**
-     * @dev Returns reward token address.
+     * @dev Unlocks the staked tokens if lock period passed and claims specified rewards.
+     *
+     * @param _rewardsToClaim The tokens to claim.
+     * @param _amount The amount to unlock.
      */
-    function getRewardTokenAddress() external view returns (address) {
-        return address(rewardsToken);
-    }
+    function unlock(address[] calldata _rewardsToClaim, uint256 _amount) external {
+        require(_amount != 0, "Locker: invalid amount");
+        require(_rewardsToClaim.length != 0, "Locker: invalid amount");
 
-    /**
-     * @dev Returns reward token total supply.
-     */
-    function getRewardTokenCount() external view returns (uint256) {
-        return rewardsToken.totalSupply();
-    }
+        uint256 lockPeriodReachedAt = userContribution[msg.sender].lockTimeStart + lockPeriod;
 
-    /**
-     * @dev Returns distribution .
-     */
-    function lastTimeRewardApplicable() public view returns (uint64) {
-        return _min(finishAt, block.timestamp).toUint64();
-    }
-
-    /**
-     * @dev Returns reward per token.
-     */
-    function rewardPerToken(address _token) public view returns (uint256) {
-        if (totalSupply[_token] == 0) {
-            return rewardPerTokenStored[_token];
+        if (lockPeriodReachedAt < block.timestamp) {
+            _withdraw(_rewardsToClaim, _amount);
+        } else {
+            revert LockPeriodNotReached(lockPeriodReachedAt);
         }
-
-        return
-            rewardPerTokenStored[_token] +
-            (rewardRate * (lastTimeRewardApplicable() - updatedAt) * 1e18) /
-            totalSupply[_token];
-    }
-
-    /**
-     * @dev Stakes the input amount of the staking token to the contract.
-     *
-     * @param amount The amount of the staking token.
-     */
-    function stake(address _token, uint256 amount) external {
-        if (!_isTokenExist(_token)) revert TokenNotSupported(_token);
-        require(amount > 0, "Locker: amount cannot be zero");
-
-        _updateReward(msg.sender, _token);
-
-        SafeHTS.safeTransferToken(_token, msg.sender, address(this), int64(uint64(amount)));
-
-        balanceOf[msg.sender][_token] += amount;
-        totalSupply[_token] += amount;
-
-        emit Staked(msg.sender, _token, amount);
-    }
-
-    /**
-     * @dev Withdraws the staking token.
-     *
-     * @param amount The amount of the staking token to withdraw.
-     */
-    function withdraw(address _token, uint256 amount) external {
-        if (!_isTokenExist(_token)) revert TokenNotSupported(_token);
-        require(amount > 0, "Locker: amount cannot be zero");
-
-        _updateReward(msg.sender, _token);
-
-        SafeHTS.safeTransferToken(_token, address(this), msg.sender, int64(uint64(amount)));
-
-        balanceOf[msg.sender][_token] -= amount;
-        totalSupply[_token] -= amount;
-
-        emit Withdraw(msg.sender, _token, amount);
-    }
-
-    /**
-     * @dev Returns the count of rewards for the user.
-     *
-     * @param _account The address of the user for rewards calculation.
-     */
-    function earned(address _account, address _token) public view returns (uint256) {
-        return
-            ((balanceOf[_account][_token] * (rewardPerToken(_token) - userRewardPerTokenPaid[_account][_token])) /
-                1e18) + rewards[_account][_token];
     }
 
     /**
      * @dev Claims all rewards.
      */
-    function claimReward() external {
-        uint256 totalReward = 0;
+    function claimAllReward() public {
+        uint256 rewardsSize = rewardTokens.length;
 
-        for (uint256 i = 0; i < tokens.length; i++) {
-            address token = tokens[i];
+        uint256 reward;
+        address token;
 
-            _updateReward(msg.sender, token);
+        for (uint256 i = 0; i < rewardsSize; i++) {
+            token = rewardTokens[i];
 
-            uint256 reward = rewards[msg.sender][token];
-            if (reward > 0) {
-                rewards[msg.sender][token] = 0;
-                totalReward += reward;
-            }
-        }
+            if (!_isTokenExist(token)) revert TokenNotSupported(token);
 
-        if (totalReward > 0) {
-            SafeHTS.safeTransferToken(address(rewardsToken), address(this), msg.sender, int64(uint64(totalReward)));
-            emit Claim(msg.sender, totalReward);
+            reward = calculateReward(token);
+
+            userContribution[msg.sender].lastClaimedAmount[token] = rewardsInfoByToken[token].amount;
+            SafeHTS.safeTransferToken(token, address(this), msg.sender, int64(uint64(reward)));
+
+            emit Claim(msg.sender, token, reward);
         }
     }
 
     /**
-     * @dev Sets duration for the rewards distribution.
-     *
-     * @param _duration The duration of rewards to be paid out.
-     * @param reward The rewards amount.
+     * @dev Returns the locked amount for the caller.
      */
-    function setRewardsDuration(uint256 _duration, uint256 reward) external onlyOwner {
-        require(finishAt < block.timestamp, "Locker: reward duration not finished");
-
-        SafeHTS.safeTransferToken(address(rewardsToken), msg.sender, address(this), int64(uint64(reward)));
-        duration = _duration.toUint64();
-
-        emit RewardsDurationUpdated(duration, reward);
+    function getLockedAmount() external view returns (uint256) {
+        return userContribution[msg.sender].shares;
     }
 
     /**
-     * @dev Configures rewards parameters and the end of the distribution.
-     *
-     * @param _amount The rewards amount.
+     * @dev Returns the total staked amount.
      */
-    function notifyRewardAmount(uint256 _amount) external {
-        _updateReward(address(0), address(0));
+    function getTVL() external view returns (uint256) {
+        return totalStaked;
+    }
 
-        if (block.timestamp >= finishAt) {
-            rewardRate = (_amount / duration).toUint64();
-        } else {
-            uint256 remainingRewards = (finishAt - block.timestamp) * rewardRate;
-            rewardRate = ((_amount + remainingRewards) / duration).toUint64();
-        }
+    /**
+     * @dev Returns the lock period.
+     */
+    function getLockPeriod() external view returns (uint256) {
+        return lockPeriod;
+    }
 
-        require(rewardRate > 0, "Locker: reward rate is zero");
-        require(
-            rewardRate * duration <= rewardsToken.balanceOf(address(this)),
-            "Locker: insuficcient token balance on the contract"
-        );
+    /**
+     * @dev Returns the staking token address.
+     */
+    function getStakingToken() external view returns (address) {
+        return stakingToken;
+    }
 
-        finishAt = (block.timestamp + duration).toUint64();
-        updatedAt = block.timestamp.toUint64();
-
-        emit NotifiedRewardAmount(finishAt, updatedAt, _amount);
+    /**
+     * @dev Returns the reward tokens.
+     */
+    function getRewardTokens() external view returns (address[] memory) {
+        return rewardTokens;
     }
 
     /**
@@ -297,18 +294,43 @@ contract Locker is Ownable {
      * @return exist The existance flag.
      */
     function _isTokenExist(address _token) private view returns (bool exist) {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            if (tokens[i] == _token) return true;
-        }
+        return rewardsInfoByToken[_token].exist;
     }
 
     /**
-     * @dev Returns the minimum value from the input.
+     * @dev Calculates reward for specified token.
      *
-     * @param x The first value.
-     * @param y The second value.
+     * @param _token The token address.
+     * @return exist The calculated reward.
      */
-    function _min(uint256 x, uint256 y) private pure returns (uint256) {
-        return x <= y ? x : y;
+    function calculateReward(address _token) public view returns (uint256) {
+        return
+            (rewardsInfoByToken[_token].amount - userContribution[msg.sender].lastClaimedAmount[_token]) *
+            userContribution[msg.sender].shares;
+    }
+
+    /**
+     * @dev Claims specified rewards.
+     *
+     * @param _tokensToClaim The tokens to claim.
+     */
+    function claimSpecificsReward(address[] calldata _tokensToClaim) public {
+        uint256 tokensToClaimSize = _tokensToClaim.length;
+
+        uint256 reward;
+        address token;
+
+        for (uint256 i = 0; i < tokensToClaimSize; i++) {
+            token = _tokensToClaim[i];
+
+            if (!_isTokenExist(token)) revert TokenNotSupported(token);
+
+            reward = calculateReward(token);
+
+            userContribution[msg.sender].lastClaimedAmount[token] = rewardsInfoByToken[token].amount;
+            SafeHTS.safeTransferToken(token, address(this), msg.sender, int64(uint64(reward)));
+
+            emit Claim(msg.sender, token, reward);
+        }
     }
 }
