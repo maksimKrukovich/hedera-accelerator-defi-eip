@@ -52,7 +52,7 @@ async function main() {
 
   // console.log("Staking token addrress", stakingTokenAddress);
   // console.log("Reward token addrress", rewardTokenAddress);
-
+  
   // Zero fee
   const feeConfig = {
     receiver: ZeroAddress,
