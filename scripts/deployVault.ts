@@ -29,14 +29,14 @@ async function main() {
     operatorPrKey
   );
 
-  // const stakingToken = await createFungibleToken(
-  //   "ERC4626 on Hedera",
-  //   "HERC4626",
-  //   process.env.ACCOUNT_ID,
-  //   operatorPrKey.publicKey,
-  //   client,
-  //   operatorPrKey
-  // );
+  const stakingToken = await createFungibleToken(
+    "ERC4626 on Hedera",
+    "HERC4626",
+    process.env.ACCOUNT_ID,
+    operatorPrKey.publicKey,
+    client,
+    operatorPrKey
+  );
 
   // const rewardToken = await createFungibleToken(
   //   "Reward Token 1",
