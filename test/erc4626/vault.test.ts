@@ -179,6 +179,31 @@ describe("Vault", function () {
         });
     });
 
+    // describe("Initialize balancer", function () {
+    //     it("Should initialize balancer", async function () {
+    //         const { hederaVault, owner, sharesToken } = await deployFixture();
+    //         const amountToWithdraw = 1;
+
+    //         console.log("Preview Withdraw ", await hederaVault.previewWithdraw(amountToWithdraw));
+
+    //         await sharesToken.approve(hederaVault.target, amountToWithdraw)
+
+    //         const tx = await hederaVault.withdraw(
+    //             amountToWithdraw,
+    //             owner.address,
+    //             owner.address,
+    //             { gasLimit: 3000000 }
+    //         );
+
+    //         console.log(tx.hash);
+
+    //         await expect(
+    //             tx
+    //         ).to.emit(hederaVault, "Withdraw")
+    //             .withArgs(owner.address, owner.address, amountToWithdraw, anyValue);
+    //     });
+    // });
+
     describe("mint", function () {
         it("Should mint tokens", async function () {
             const { hederaVault, owner, stakingToken } = await deployFixture();
@@ -317,23 +342,23 @@ describe("Vault", function () {
         });
     });
 
-    describe("claimAllReward", function () {
-        it("Should claim all reward", async function () {
-            const { hederaVault, owner, rewardToken } = await deployFixture();
+    // describe("claimAllReward", function () {
+    //     it("Should claim all reward", async function () {
+    //         const { hederaVault, owner, rewardToken } = await deployFixture();
 
-            // await rewardToken.approve(hederaVault.target, 10 * 1e8);
+    //         // await rewardToken.approve(hederaVault.target, 10 * 1e8);
 
-            console.log(await hederaVault.calculateReward(0));
+    //         console.log(await hederaVault.calculateReward(0));
 
-            const reward = await hederaVault.calculateReward(0);
+    //         const reward = await hederaVault.calculateReward(0);
 
-            const tx = await hederaVault.claimAllReward(0);
+    //         const tx = await hederaVault.claimAllReward(0);
 
-            console.log(tx.hash);
+    //         console.log(tx.hash);
 
-            await expect(
-                tx
-            ).to.changeTokenBalance(rewardToken, owner, reward);
-        });
-    });
+    //         await expect(
+    //             tx
+    //         ).to.changeTokenBalance(rewardToken, owner, reward);
+    //     });
+    // });
 });

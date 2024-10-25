@@ -9,7 +9,8 @@ import {IPyth} from "@pythnetwork/pyth-sdk-solidity/IPyth.sol";
 import {PythStructs} from "@pythnetwork/pyth-sdk-solidity/PythStructs.sol";
 import {PythUtils} from "@pythnetwork/pyth-sdk-solidity/PythUtils.sol";
 
-import {ISaucerSwap} from "./interfaces/ISaucerSwap.sol";
+import {IUniswapV2Router02} from "./interfaces/IUniswapV2Router02.sol";
+import {ITokenBalancer} from "./interfaces/ITokenBalancer.sol";
 
 import "../common/safe-HTS/SafeHTS.sol";
 
@@ -18,59 +19,49 @@ import "../common/safe-HTS/SafeHTS.sol";
  *
  * The contract that helps to maintain reward token balances.
  */
-abstract contract TokenBalancer is AccessControl {
+contract TokenBalancer is ITokenBalancer, AccessControl {
     using PythUtils for int64;
-    // Allocation percentages for rebalance
-    mapping(address => uint256 allocationPercentage) internal targetPercentages;
 
-    // Price ids for every reward token in terms of Pyth oracle
-    mapping(address => bytes32 priceId) public priceIds;
-
-    // Swap paths for every reward token in terms of Saucer Swap
-    mapping(address => address[]) public swapPaths;
-
-    // Reward token prices
-    mapping(address => uint256) public tokenPrices;
+    // Max tokens amount to rebalance
+    uint8 constant MAX_TOKENS_AMOUNT = 10;
 
     // Saucer Swap
-    ISaucerSwap public saucerSwap;
+    IUniswapV2Router02 public saucerSwap;
 
     // Oracle
     IPyth public pyth;
 
+    // Token address => Token info
+    mapping(address token => TokenInfo) public tokens;
+
     /**
      * @dev Initializes contract with passed parameters.
      *
-     * @param _pyth The address of the Pyth oracle contract.
-     * @param _saucerSwap The address of Saucer Swap contract.
-     * @param tokens The reward tokens.
-     * @param allocationPercentage The allocation percentages for rebalances.
-     * @param _priceIds The Pyth price ids to fetch prices.
+     * @param _pyth The address of the Pyth oracle.
+     * @param _saucerSwap The address of Saucer swap contract.
+     * @param _tokens The tokens to rebalance.
+     * @param _allocationPercentage The target allocation percentage.
+     * @param _priceIds The price IDs in terms of Pyth oracle.
      */
-    function __TokenBalancer_init(
+    constructor(
         address _pyth,
         address _saucerSwap,
-        address[] memory tokens,
-        uint256[] memory allocationPercentage,
+        address[] memory _tokens,
+        uint256[] memory _allocationPercentage,
         bytes32[] memory _priceIds
-    ) internal {
-        require(_pyth != address(0), "Invalid Pyth address");
-        require(_saucerSwap != address(0), "Invalid Saucer Swap address");
-        require(tokens.length > 0, "No rewards tokens");
-        require(allocationPercentage.length > 0, "Allocation percentage not configured");
-        require(_priceIds.length > 0, "No price ids");
+    ) {
+        require(_pyth != address(0), "TokenBalancer: Invalid Pyth address");
+        require(_saucerSwap != address(0), "TokenBalancer: Invalid Saucer Swap address");
+        require(_tokens.length != 0 && _tokens.length <= MAX_TOKENS_AMOUNT, "TokenBalancer: Invalid amount of tokens");
+        require(_allocationPercentage.length > 0, "TokenBalancer: Allocation percentage not configured");
+        require(_priceIds.length > 0, "TokenBalancer: No price ids");
 
-        saucerSwap = ISaucerSwap(_saucerSwap);
+        saucerSwap = IUniswapV2Router02(_saucerSwap);
         pyth = IPyth(_pyth);
 
-        address whbar = saucerSwap.WHBAR();
-
-        uint256 tokensSize = tokens.length;
+        uint256 tokensSize = _tokens.length;
         for (uint256 i = 0; i < tokensSize; i++) {
-            targetPercentages[tokens[i]] = allocationPercentage[i];
-            priceIds[tokens[i]] = _priceIds[i];
-            swapPaths[tokens[i]] = [whbar, tokens[i]];
-            tokenPrices[tokens[i]] = _getPrice(tokens[i]);
+            addTrackingToken(_tokens[i], _priceIds[i], _allocationPercentage[i]);
         }
     }
 
@@ -78,9 +69,10 @@ abstract contract TokenBalancer is AccessControl {
      * @dev Gets token price and calculate one dollar in any token.
      *
      * @param token The token address.
+     * @param priceId The price ID in terms of Pyth oracle.
      */
-    function _getPrice(address token) public view returns (uint256 oneDollarInHbar) {
-        PythStructs.Price memory price = pyth.getPrice(priceIds[token]);
+    function _getPrice(address token, bytes32 priceId) public view returns (uint256 oneDollarInToken) {
+        PythStructs.Price memory price = pyth.getPrice(priceId);
         return price.price.convertToUint(price.expo, IERC20Metadata(token).decimals());
     }
 
@@ -95,26 +87,27 @@ abstract contract TokenBalancer is AccessControl {
     }
 
     /**
-     * @dev Rebalances reward balances.
+     * @dev Initiates rebalance process.
      *
-     * @param _rewardTokens The reward tokens array.
+     * @param _rewardTokens The reward tokens to rebalance.
      */
     function rebalance(address[] calldata _rewardTokens) external {
         uint256 rewardTokensSize = _rewardTokens.length;
-        uint256[] memory prices;
+        uint256[] memory prices = new uint256[](rewardTokensSize);
         for (uint256 i = 0; i < rewardTokensSize; i++) {
-            prices[i] = tokenPrices[_rewardTokens[i]];
+            TokenInfo storage token = tokens[_rewardTokens[i]];
+            prices[i] = token.price;
         }
 
         uint256[] memory swapAmounts = _rebalance(prices, _rewardTokens, rewardTokensSize);
 
-        _swapExtraRewardSupplyToTransitionToken(_rewardTokens);
+        _swapExtraRewardSupplyToTransitionToken(_rewardTokens, rewardTokensSize);
 
         uint256 swapsCount = swapAmounts.length;
         for (uint256 i = 0; i < swapsCount; i++) {
             saucerSwap.swapExactETHForTokens(
                 swapAmounts[i],
-                swapPaths[_rewardTokens[i]],
+                tokens[_rewardTokens[i]].path,
                 address(this),
                 block.timestamp
             );
@@ -125,34 +118,36 @@ abstract contract TokenBalancer is AccessControl {
      * @dev Swaps extra reward balance to WHBAR token for future rebalance.
      *
      * @param _rewardTokens The reward tokens array.
+     * @param rewardTokensSize The reward tokens size.
      */
-    function _swapExtraRewardSupplyToTransitionToken(address[] calldata _rewardTokens) public {
-        address token;
+    function _swapExtraRewardSupplyToTransitionToken(
+        address[] calldata _rewardTokens,
+        uint256 rewardTokensSize
+    ) public {
         uint256 tokenBalance;
-        uint256 tokenPrice;
         uint256 totalValue;
         uint256 targetValue;
         uint256 targetQuantity;
 
-        for (uint256 i = 0; i < _rewardTokens.length; i++) {
-            token = _rewardTokens[i];
-            tokenBalance = IERC20(token).balanceOf(address(this));
-            tokenPrice = tokenPrices[token];
-            totalValue = tokenBalance * tokenPrice;
-            targetValue = (totalValue * targetPercentages[token]) / 10000;
-            targetQuantity = targetValue / tokenPrice;
+        for (uint256 i = 0; i < rewardTokensSize; i++) {
+            TokenInfo storage token = tokens[_rewardTokens[i]];
+
+            tokenBalance = IERC20(_rewardTokens[i]).balanceOf(msg.sender);
+            totalValue = tokenBalance * token.price;
+            targetValue = (totalValue * tokens[_rewardTokens[i]].targetPercentage) / 10000;
+            targetQuantity = targetValue / token.price;
 
             if (tokenBalance > targetQuantity) {
                 uint256 excessQuantity = tokenBalance - targetQuantity;
 
                 // Approve token transfer to SaucerSwap
-                IERC20(token).approve(address(saucerSwap), excessQuantity);
+                IERC20(_rewardTokens[i]).approve(address(saucerSwap), excessQuantity);
 
                 // Perform the swap
                 saucerSwap.swapExactTokensForETH(
                     excessQuantity,
                     0, // Accept any amount of ETH
-                    swapPaths[token],
+                    token.path,
                     address(this),
                     block.timestamp
                 );
@@ -161,7 +156,7 @@ abstract contract TokenBalancer is AccessControl {
     }
 
     /**
-     * @dev Swaps extra reward balance to WHBAR token for future rebalance.
+     * @dev Calculates amount of swap for every passed token.
      *
      * @param _tokenPrices The token prices array.
      * @param _rewardTokens The reward tokens array.
@@ -172,14 +167,12 @@ abstract contract TokenBalancer is AccessControl {
         address[] calldata _rewardTokens,
         uint256 rewardTokensSize
     ) public view returns (uint256[] memory) {
-        require(_tokenPrices.length == rewardTokensSize, "Token prices array length mismatch");
-
         uint256 totalValue;
         uint256[] memory tokenBalances = new uint256[](rewardTokensSize);
 
         // Calculate total value in the contract
         for (uint256 i = 0; i < rewardTokensSize; i++) {
-            tokenBalances[i] = IERC20(_rewardTokens[i]).balanceOf(address(this));
+            tokenBalances[i] = IERC20(_rewardTokens[i]).balanceOf(msg.sender);
             totalValue += tokenBalances[i] * _tokenPrices[i];
         }
 
@@ -188,7 +181,7 @@ abstract contract TokenBalancer is AccessControl {
 
         // Calculate target values and swap amounts
         for (uint256 i = 0; i < rewardTokensSize; i++) {
-            uint256 targetValue = (totalValue * targetPercentages[_rewardTokens[i]]) / 10000;
+            uint256 targetValue = (totalValue * tokens[_rewardTokens[i]].targetPercentage) / 10000;
             uint256 targetQuantity = targetValue / _tokenPrices[i];
 
             swapAmounts[i] = targetQuantity - tokenBalances[i];
@@ -198,14 +191,38 @@ abstract contract TokenBalancer is AccessControl {
     }
 
     /**
+     * @dev Add token to the system.
+     *
+     * @param token The token address.
+     * @param priceId The price ID in terms of Pyth oracle.
+     * @param percentage The target allocation percentage.
+     */
+    function addTrackingToken(address token, bytes32 priceId, uint256 percentage) public {
+        require(token != address(0), "TokenBalancer: Invalid token address");
+        require(priceId.length != 0, "TokenBalancer: Invalid price ID");
+        require(percentage < 10000, "TokenBalancer: Percentage exceeds 100%");
+        require(tokens[token].priceId == 0, "TokenBalancer: Token already exists");
+
+        address[] memory _path = new address[](2);
+        (_path[0], _path[1]) = (saucerSwap.WHBAR(), token);
+
+        tokens[token] = TokenInfo(priceId, _getPrice(token, priceId), percentage, _path);
+
+        emit TokenAdded(token, priceId, percentage);
+    }
+
+    /**
      * @dev Sets a target percentage for a reward token.
      *
      * @param token The token address.
      * @param percentage The allocation percentage.
      */
     function setAllocationPercentage(address token, uint256 percentage) external {
-        require(percentage < 10000, "Percentage exceeds 100%");
         require(token != address(0), "Invalid token address");
-        targetPercentages[token] = percentage;
+        require(percentage < 10000, "Percentage exceeds 100%");
+
+        tokens[token].targetPercentage = percentage;
+
+        emit TargetAllocationPercentageChanged(token, percentage);
     }
 }
