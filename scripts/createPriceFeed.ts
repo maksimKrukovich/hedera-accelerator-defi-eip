@@ -113,7 +113,6 @@ async function main() {
 
     console.log(contractQuerySubmit1);
 
-
     // const pyth = await ethers.getContractAt("MockPyth", mockPyth,);
 
     // const pyth = new ethers.Contract(mockPyth, abi);

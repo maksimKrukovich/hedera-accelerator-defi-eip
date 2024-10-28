@@ -10,16 +10,6 @@ const sharesTokenAddress = "0x0000000000000000000000000000000000395640";
 const revertCasesVaultAddress = "0xb3C24B140BA2a69099276e55dE1885e93517C6C6";
 const revertCasesVaultId = "0.0.3757631";
 
-// const newStakingTokenId = "0.0.4291710";
-// const newVaultAddress = "0x26767C096B669b0A5Df59efeF0d6CbA3840E47F6"
-// const newRewardTokenId = "0.0.4291711";
-// const rewardTokenAddress = "0x0000000000000000000000000000000000417c7f";
-// const newSharesTokenAddress = "0x0000000000000000000000000000000000417c82";
-// const newSharesTokenId = "0.0.4291714";
-// const newVaultId = "0.0.4229240";
-
-// const vaultEr = "0x8b9036f98059014a0cD062b02A88d285fd59cc68";
-
 const newStakingTokenId = "0.0.4338257";
 const newRewardTokenId = "0.0.4310077";
 const rewardTokenAddress = "0x0000000000000000000000000000000000423252";
@@ -341,24 +331,4 @@ describe("Vault", function () {
             ).to.be.reverted;
         });
     });
-
-    // describe("claimAllReward", function () {
-    //     it("Should claim all reward", async function () {
-    //         const { hederaVault, owner, rewardToken } = await deployFixture();
-
-    //         // await rewardToken.approve(hederaVault.target, 10 * 1e8);
-
-    //         console.log(await hederaVault.calculateReward(0));
-
-    //         const reward = await hederaVault.calculateReward(0);
-
-    //         const tx = await hederaVault.claimAllReward(0);
-
-    //         console.log(tx.hash);
-
-    //         await expect(
-    //             tx
-    //         ).to.changeTokenBalance(rewardToken, owner, reward);
-    //     });
-    // });
 });

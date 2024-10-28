@@ -171,6 +171,7 @@ async function deployVault(contracts: Record<string, any>): Promise<Record<strin
     feeConfig,
     deployer.address,
     deployer.address,
+    "0x330C40b17607572cf113973b8748fD1aEd742943",
     { from: deployer.address, gasLimit: 3000000, value: ethers.parseUnits("12", 18) }
   );
   console.log("Hash ", hederaVault.deploymentTransaction()?.hash);
