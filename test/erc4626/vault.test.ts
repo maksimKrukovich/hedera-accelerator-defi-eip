@@ -169,31 +169,6 @@ describe("Vault", function () {
         });
     });
 
-    // describe("Initialize balancer", function () {
-    //     it("Should initialize balancer", async function () {
-    //         const { hederaVault, owner, sharesToken } = await deployFixture();
-    //         const amountToWithdraw = 1;
-
-    //         console.log("Preview Withdraw ", await hederaVault.previewWithdraw(amountToWithdraw));
-
-    //         await sharesToken.approve(hederaVault.target, amountToWithdraw)
-
-    //         const tx = await hederaVault.withdraw(
-    //             amountToWithdraw,
-    //             owner.address,
-    //             owner.address,
-    //             { gasLimit: 3000000 }
-    //         );
-
-    //         console.log(tx.hash);
-
-    //         await expect(
-    //             tx
-    //         ).to.emit(hederaVault, "Withdraw")
-    //             .withArgs(owner.address, owner.address, amountToWithdraw, anyValue);
-    //     });
-    // });
-
     describe("mint", function () {
         it("Should mint tokens", async function () {
             const { hederaVault, owner, stakingToken } = await deployFixture();
