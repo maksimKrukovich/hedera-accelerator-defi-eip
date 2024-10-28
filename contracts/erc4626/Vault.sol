@@ -7,7 +7,7 @@ import {IERC4626} from "./IERC4626.sol";
 import {IHRC} from "../common/hedera/IHRC.sol";
 
 import {FeeConfiguration} from "../common/FeeConfiguration.sol";
-import {TokenBalancer} from "./TokenBalancer.sol";
+import {ITokenBalancer} from "./interfaces/ITokenBalancer.sol";
 
 import {FixedPointMathLib} from "./FixedPointMathLib.sol";
 import {SafeTransferLib} from "./SafeTransferLib.sol";
@@ -23,10 +23,13 @@ import "../common/safe-HTS/IHederaTokenService.sol";
  *
  * The contract which represents a custom Vault with Hedera HTS support.
  */
-contract HederaVault is IERC4626, FeeConfiguration, TokenBalancer, Ownable, ReentrancyGuard {
+contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
     using Bits for uint256;
+
+    // Token balancer
+    ITokenBalancer public immutable tokenBalancer;
 
     // Staking token
     ERC20 public immutable asset;
@@ -94,6 +97,7 @@ contract HederaVault is IERC4626, FeeConfiguration, TokenBalancer, Ownable, Reen
      * @param _feeConfig The fee configuration struct.
      * @param _vaultRewardController The Vault reward controller user.
      * @param _feeConfigController The fee config controller user.
+     * @param _tokenBalancer The token balancer contract address.
      */
     constructor(
         ERC20 _underlying,
@@ -101,10 +105,12 @@ contract HederaVault is IERC4626, FeeConfiguration, TokenBalancer, Ownable, Reen
         string memory _symbol,
         FeeConfig memory _feeConfig,
         address _vaultRewardController,
-        address _feeConfigController
+        address _feeConfigController,
+        address _tokenBalancer
     ) payable ERC20(_name, _symbol, _underlying.decimals()) Ownable(msg.sender) {
         __FeeConfiguration_init(_feeConfig, _vaultRewardController, _feeConfigController);
 
+        tokenBalancer = ITokenBalancer(_tokenBalancer);
         asset = _underlying;
 
         _createTokenWithContractAsOwner(_name, _symbol, _underlying);
@@ -237,6 +243,12 @@ contract HederaVault is IERC4626, FeeConfiguration, TokenBalancer, Ownable, Reen
         emit Withdraw(from, receiver, amount, shares);
 
         asset.safeTransfer(receiver, amount);
+    }
+
+    function rebalance() public {
+        require(rewardTokens.length != 0, "No rewards to rebalance");
+
+        tokenBalancer.rebalance(rewardTokens);
     }
 
     /*///////////////////////////////////////////////////////////////
