@@ -29,14 +29,14 @@ async function main() {
     operatorPrKey
   );
 
-  // const stakingToken = await createFungibleToken(
-  //   "ERC4626 on Hedera",
-  //   "HERC4626",
-  //   process.env.ACCOUNT_ID,
-  //   operatorPrKey.publicKey,
-  //   client,
-  //   operatorPrKey
-  // );
+  const stakingToken = await createFungibleToken(
+    "ERC4626 on Hedera",
+    "HERC4626",
+    process.env.ACCOUNT_ID,
+    operatorPrKey.publicKey,
+    client,
+    operatorPrKey
+  );
 
   // const rewardToken = await createFungibleToken(
   //   "Reward Token 1",
@@ -46,9 +46,6 @@ async function main() {
   //   client,
   //   operatorPrKey
   // );
-
-  // const stakingTokenAddress = "0x" + stakingToken!.toSolidityAddress();
-  // const rewardTokenAddress = "0x" + rewardToken!.toSolidityAddress();
 
   // console.log("Staking token addrress", stakingTokenAddress);
   // console.log("Reward token addrress", rewardTokenAddress);
@@ -101,18 +98,18 @@ async function main() {
 
   // console.log("MockPyth deployed with address: ", await mockPyth.getAddress());
 
-  const VaultFactory = await ethers.getContractFactory("VaultFactory");
-  const vaultFactory = await VaultFactory.deploy();
-  console.log("Hash ", vaultFactory.deploymentTransaction()?.hash);
-  await vaultFactory.waitForDeployment();
-
-  console.log("Vault Factory deployed with address: ", await vaultFactory.getAddress());
-
   // const PythUtils = await ethers.getContractFactory("@pythnetwork/pyth-sdk-solidity/PythUtils.sol:PythUtils");
   // const pythUtils = await PythUtils.deploy();
   // await pythUtils.waitForDeployment();
 
   // console.log("PythUtils deployed to:", await pythUtils.getAddress());
+  
+  // const VaultFactory = await ethers.getContractFactory("VaultFactory");
+  // const vaultFactory = await VaultFactory.deploy();
+  // console.log("Hash ", vaultFactory.deploymentTransaction()?.hash);
+  // await vaultFactory.waitForDeployment();
+
+  // console.log("Vault Factory deployed with address: ", await vaultFactory.getAddress());
 
   // const Locker = await ethers.getContractFactory("Locker");
   // const locker = await Locker.deploy(
