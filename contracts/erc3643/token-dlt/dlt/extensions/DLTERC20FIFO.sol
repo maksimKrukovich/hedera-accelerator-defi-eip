@@ -9,12 +9,12 @@ import { DLTEnumerable } from "./DLTEnumerable.sol";
  * ERC20 support using a FIFO strategy for transfering amounts.
  */
 abstract contract DLTERC20FIFO is DLTEnumerable, IERC20 {
-    uint256 private totalTokenSupply; // erc20 total supply
+    uint256 internal totalTokenSupply; // erc20 total supply
     mapping (address => int64[]) private mainStack; // stack of main asset IDs
     mapping (address => mapping(int64 => int64[])) private subStack; // stack of sub asset IDs
     mapping (address => mapping(int64 => bool)) private isMainIdPresent; // maps if an main asset id is present in the stack
     mapping (address => mapping(int64 => mapping(int64 => bool))) private isSubIdPresent; // maps if an sub asset id is present in the stack
-    mapping (address => mapping(address => uint256)) private allowances; // erc20 allowances map
+    mapping (address => mapping(address => uint256)) internal allowances; // erc20 allowances map
 
     /**
      * Data structure to handle token transfer 
@@ -64,8 +64,8 @@ abstract contract DLTERC20FIFO is DLTEnumerable, IERC20 {
      * @param value amount of tokens to send
      * @return bool true on success.
      */
-    function transfer(address to, uint256 value) external override returns (bool) {
-        _transfer(_msgSender(), to, value);
+    function transfer(address to, uint256 value) external override virtual returns (bool) {
+        _transfer(msg.sender, to, value);
         return true;
     }
 
@@ -86,11 +86,12 @@ abstract contract DLTERC20FIFO is DLTEnumerable, IERC20 {
      * @return bool true on success
      */
     function approve(address spender, uint256 value) external override returns (bool) {
-        return _approve(_msgSender(), spender, value);
+        return _approve(msg.sender, spender, value);
     }
 
     function _approve(address from, address spender, uint256 value) internal returns (bool) {
         allowances[from][spender] = value;
+        emit Approval(from, spender, value);
         return true;
     }
 
@@ -101,7 +102,7 @@ abstract contract DLTERC20FIFO is DLTEnumerable, IERC20 {
      * @param value amount of tokens to send
      * @return bool true on success
      */
-    function transferFrom(address from, address to, uint256 value) external override returns (bool) {
+    function transferFrom(address from, address to, uint256 value) external override virtual returns (bool) {
         require(allowances[from][to] >= value, "ERC20: not enough allowance"); 
         _transfer(from, to, value);
         allowances[from][to] -= value;
@@ -142,6 +143,8 @@ abstract contract DLTERC20FIFO is DLTEnumerable, IERC20 {
             _resizeUintArray(data.selectedAmounts, data.selectedCount),
             new bytes(0)
         );
+
+        emit Transfer(from, to, value);
     }
 
      /**
@@ -216,9 +219,9 @@ abstract contract DLTERC20FIFO is DLTEnumerable, IERC20 {
         int64 mainId,
         int64 subId,
         uint256 amount
-    ) internal virtual override(DLTEnumerable) {
+    ) internal virtual {
         totalTokenSupply += amount;
-        super._mint(recipient, mainId, subId, amount);
+        super._mintToken(recipient, mainId, subId, amount);
     }
 
    /**
@@ -233,7 +236,7 @@ abstract contract DLTERC20FIFO is DLTEnumerable, IERC20 {
         int64 mainId,
         int64 subId,
         uint256 amount
-    ) internal virtual override(DLTEnumerable) {
+    ) internal virtual override {
         unchecked {
             totalTokenSupply -= amount;
         }
