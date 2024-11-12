@@ -236,6 +236,27 @@ contract TokenBalancer is ITokenBalancer {
     }
 
     /**
+     * @dev Add token to the system.
+     *
+     * @param token The token address.
+     * @param priceId The price ID in terms of Pyth oracle.
+     * @param percentage The target allocation percentage.
+     */
+    function addTrackingToken(address token, bytes32 priceId, uint256 percentage) public {
+        require(token != address(0), "TokenBalancer: Invalid token address");
+        require(priceId.length != 0, "TokenBalancer: Invalid price ID");
+        require(percentage < 10000, "TokenBalancer: Percentage exceeds 100%");
+        require(tokens[token].priceId == 0, "TokenBalancer: Token already exists");
+
+        address[] memory _path = new address[](2);
+        (_path[0], _path[1]) = (saucerSwap.WHBAR(), token);
+
+        tokens[token] = TokenInfo(priceId, _getPrice(token, priceId), percentage, _path);
+
+        emit TokenAdded(token, priceId, percentage);
+    }
+
+    /**
      * @dev Sets a target percentage for a reward token.
      *
      * @param token The token address.
