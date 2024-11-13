@@ -27,9 +27,6 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
     using FixedPointMathLib for uint256;
     using Bits for uint256;
 
-    // Token balancer
-    ITokenBalancer public immutable tokenBalancer;
-
     // Staking token
     ERC20 public immutable _asset;
 
@@ -88,7 +85,6 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @param _feeConfig The fee configuration struct.
      * @param _vaultRewardController The Vault reward controller user.
      * @param _feeConfigController The fee config controller user.
-     * @param _tokenBalancer The token balancer contract address.
      */
     constructor(
         ERC20 _underlying,
@@ -96,8 +92,7 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         string memory _symbol,
         FeeConfig memory _feeConfig,
         address _vaultRewardController,
-        address _feeConfigController,
-        address _tokenBalancer
+        address _feeConfigController
     ) payable ERC20(_name, _symbol, _underlying.decimals()) Ownable(msg.sender) {
         __FeeConfiguration_init(_feeConfig, _vaultRewardController, _feeConfigController);
 
@@ -233,12 +228,6 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         emit Withdraw(from, receiver, amount, shares);
 
         _asset.safeTransfer(receiver, amount);
-    }
-
-    function rebalance() public {
-        require(rewardTokens.length != 0, "No rewards to rebalance");
-
-        tokenBalancer.rebalance(rewardTokens);
     }
 
     /*///////////////////////////////////////////////////////////////

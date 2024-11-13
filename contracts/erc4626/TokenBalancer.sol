@@ -32,8 +32,8 @@ contract TokenBalancer is ITokenBalancer {
     // Max tokens amount to rebalance
     uint8 constant MAX_TOKENS_AMOUNT = 10;
 
-    // Saucer Swap
-    IUniswapV2Router02 public saucerSwap;
+    // Uniswap V2 Router
+    IUniswapV2Router02 public uniswapV2Router;
 
     // Oracle
     IPyth public pyth;
@@ -70,15 +70,15 @@ contract TokenBalancer is ITokenBalancer {
      * @dev Initializes contract with passed parameters.
      *
      * @param _pyth The address of the Pyth oracle.
-     * @param _saucerSwap The address of the Saucer swap contract.
+     * @param _uniswapV2Router The address of the Uniswap Router contract.
      * @param _usdc The address of the USDC token.
      */
-    constructor(address _pyth, address _saucerSwap, address _usdc) {
+    constructor(address _pyth, address _uniswapV2Router, address _usdc) {
         require(_pyth != address(0), "TokenBalancer: Invalid Pyth address");
-        require(_saucerSwap != address(0), "TokenBalancer: Invalid Saucer Swap address");
+        require(_uniswapV2Router != address(0), "TokenBalancer: Invalid Uniswap Router address");
         require(_usdc != address(0), "TokenBalancer: Invalid USDC token address");
 
-        saucerSwap = IUniswapV2Router02(_saucerSwap);
+        uniswapV2Router = IUniswapV2Router02(_uniswapV2Router);
         pyth = IPyth(_pyth);
         usdc = _usdc;
 
@@ -150,24 +150,31 @@ contract TokenBalancer is ITokenBalancer {
             } else {
                 IERC4626(amounts[i].token).withdraw(amounts[i].amountToTrade, address(this), address(this));
             }
+
+            // Decrease A/V token balance by withdrawn amount
+            balances[amounts[i].token] -= amounts[i].amountToTrade;
         }
 
         for (uint256 i = 0; i < underlyingTokens.length; i++) {
             _swapTokensForTokens(balances[underlyingTokens[i]], underlyingTokens[i], usdc); // Swap whole underlying tokens balance for USDC
 
-            // Swap USDC for underlying tokens, How should we calculate amount of each base token we need to get via swap?
-            _swapTokensForTokens(balances[address(usdc)], usdc, underlyingTokens[i]);
+            _swapTokensForTokens(balances[address(usdc)], usdc, underlyingTokens[i]); // Swap USDC for underlying tokens
         }
     }
 
     /**
-     * @notice Performs the swap of Token to Token using SaucerSwap
+     * @dev Performs the swap of Token to Token using Uniswap Router.
+     *
+     * @param amount The A token amount to swap.
+     * @param tokenA The A token address.
+     * @param tokenB The B token address.
+     * @return The swap amount.
      */
     function _swapTokensForTokens(uint256 amount, address tokenA, address tokenB) internal returns (uint256) {
         address[] memory path = new address[](2);
         (path[0], path[1]) = (tokenA, tokenB);
 
-        uint256[] memory amounts = saucerSwap.swapExactTokensForTokens(
+        uint256[] memory amounts = uniswapV2Router.swapExactTokensForTokens(
             amount,
             0, // accept any amount of output token
             path,
@@ -206,7 +213,7 @@ contract TokenBalancer is ITokenBalancer {
     }
 
     /**
-     * @dev Updates price.
+     * @dev Updates oracle price.
      *
      * @param pythPriceUpdate The pyth price update.
      */
@@ -215,6 +222,14 @@ contract TokenBalancer is ITokenBalancer {
         pyth.updatePriceFeeds{value: updateFee}(pythPriceUpdate);
     }
 
+    /**
+     * @dev Adds A/V token to the balancer system.
+     *
+     * @param aToken The A/V token address.
+     * @param priceId The underlying token oracle price ID.
+     * @param percentage The allocation percentage.
+     * @param isAutoCompaunder The bool flag true if the token is autocompaunder.
+     */
     function addTrackingToken(address aToken, bytes32 priceId, uint256 percentage, bool isAutoCompaunder) public {
         require(aToken != address(0), "TokenBalancer: Invalid token address");
         require(priceId.length != 0, "TokenBalancer: Invalid price ID");
@@ -228,32 +243,11 @@ contract TokenBalancer is ITokenBalancer {
 
         tokens.push(aToken);
 
-        // Associate underlying Token and A/V
+        // Associate underlying token and A/V
         SafeHTS.safeAssociateToken(aToken, address(this));
         SafeHTS.safeAssociateToken(underlying, address(this));
 
         emit TokenAdded(aToken, priceId, percentage);
-    }
-
-    /**
-     * @dev Add token to the system.
-     *
-     * @param token The token address.
-     * @param priceId The price ID in terms of Pyth oracle.
-     * @param percentage The target allocation percentage.
-     */
-    function addTrackingToken(address token, bytes32 priceId, uint256 percentage) public {
-        require(token != address(0), "TokenBalancer: Invalid token address");
-        require(priceId.length != 0, "TokenBalancer: Invalid price ID");
-        require(percentage < 10000, "TokenBalancer: Percentage exceeds 100%");
-        require(tokens[token].priceId == 0, "TokenBalancer: Token already exists");
-
-        address[] memory _path = new address[](2);
-        (_path[0], _path[1]) = (saucerSwap.WHBAR(), token);
-
-        tokens[token] = TokenInfo(priceId, _getPrice(token, priceId), percentage, _path);
-
-        emit TokenAdded(token, priceId, percentage);
     }
 
     /**
