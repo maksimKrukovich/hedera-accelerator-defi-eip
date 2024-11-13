@@ -6,7 +6,7 @@ import { BytesLike, ZeroAddress } from "ethers";
 
 dotenv.config();
 
-const usdcAddress = "";
+const usdcAddress = "0x0000000000000000000000000000000000068cda";
 
 const mockPyth = "0x330C40b17607572cf113973b8748fD1aEd742943";
 const deployedSaucerSwap = "0xACE99ADFd95015dDB33ef19DCE44fee613DB82C2";
@@ -105,7 +105,7 @@ async function main() {
   // await pythUtils.waitForDeployment();
 
   // console.log("PythUtils deployed to:", await pythUtils.getAddress());
-  
+
   // const VaultFactory = await ethers.getContractFactory("VaultFactory");
   // const vaultFactory = await VaultFactory.deploy();
   // console.log("Hash ", vaultFactory.deploymentTransaction()?.hash);
