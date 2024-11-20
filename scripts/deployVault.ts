@@ -68,7 +68,7 @@ async function main() {
 
   // const HederaVault = await ethers.getContractFactory("HederaVault");
   // const hederaVault = await HederaVault.deploy(
-  //   "0x00000000000000000000000000000000004e8c1b",
+  //   "0x00000000000000000000000000000000004e97dd",
   //   "TST",
   //   "TST",
   //   feeConfig,
@@ -149,11 +149,11 @@ async function main() {
   const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
   const autoCompounder = await AutoCompounder.deploy(
     deployedSaucerSwap,
-    "0xCF93f51a1Cd2877958CB4f53703af3634699F747",
+    "0x1BFbfB870f0733200741dF3336f7b2abd2740207",
     usdcAddress,
     "aToken",
     "aToken",
-    { from: deployer.address, gasLimit: 3000000, value: ethers.parseUnits("120", 18) }
+    { from: deployer.address, gasLimit: 4000000, value: ethers.parseUnits("33", 18) }
   );
   console.log("Hash ", autoCompounder.deploymentTransaction()?.hash);
   await autoCompounder.waitForDeployment();

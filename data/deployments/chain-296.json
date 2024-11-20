@@ -35,7 +35,10 @@
     "RewardToken": "0x0000000000000000000000000000000000423252"
   },
   "balancer": {
-    "TokenBalancer": "0xcb33c45a841b010137116b12B36E35d318F9038F"
+    "TokenBalancer": "0x5dbee7C32027f5A5dF946990BfB4345821E33E80"
+  },
+  "autoCompounder": {
+    "AutoCompounder": "0xa250aeA16b9Aed0996Dd33D70d91536e523A9Fc2"
   },
   "nft": {
     "HederaNFT": "0xCeabeC99782c70840A8C11eE931473Ec6407678B"

@@ -85,7 +85,6 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable {
     }
 
     function _createTokenWithContractAsOwner(string memory _name, string memory _symbol, ERC20 _underlying) internal {
-        SafeHTS.safeAssociateToken(address(_underlying), address(this));
         uint256 supplyKeyType;
         uint256 adminKeyType;
 
