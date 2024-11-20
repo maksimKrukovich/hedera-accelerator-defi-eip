@@ -97,7 +97,7 @@ contract TokenBalancer is ITokenBalancer {
 
         if (aTokenInfo.isAutoCompaunder) {
             uint256 aTokenBalance = IERC20(_aToken).balanceOf(address(this));
-            uint256 exchangeRate = IAutoCompounder(_aToken).getExchangeRate();
+            uint256 exchangeRate = IAutoCompounder(_aToken).exchangeRate();
             uint256 usdPrice = _getPrice(aTokenInfo.token, aTokenInfo.priceId);
 
             uint256 currentValue = (aTokenBalance * exchangeRate * usdPrice) / 1e18;
@@ -146,7 +146,7 @@ contract TokenBalancer is ITokenBalancer {
 
             // withdraw calculated amounts of the underlying tokens and burn A/V tokens equivalent
             if (aTokenInfo.isAutoCompaunder) {
-                IAutoCompounder(amounts[i].token).withdraw(amounts[i].amountToTrade, address(this), address(this));
+                IAutoCompounder(amounts[i].token).withdraw(amounts[i].amountToTrade);
             } else {
                 IERC4626(amounts[i].token).withdraw(amounts[i].amountToTrade, address(this), address(this));
             }
@@ -244,7 +244,7 @@ contract TokenBalancer is ITokenBalancer {
         tokens.push(aToken);
 
         // Associate underlying token and A/V
-        SafeHTS.safeAssociateToken(aToken, address(this));
+        SafeHTS.safeAssociateToken(IERC4626(aToken).share(), address(this));
         SafeHTS.safeAssociateToken(underlying, address(this));
 
         emit TokenAdded(aToken, priceId, percentage);

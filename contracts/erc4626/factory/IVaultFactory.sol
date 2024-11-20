@@ -27,7 +27,6 @@ interface IVaultFactory {
         string shareTokenSymbol;
         address vaultRewardController;
         address feeConfigController;
-        address tokenBalancer;
     }
 
     /**

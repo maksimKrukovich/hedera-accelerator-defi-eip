@@ -47,8 +47,7 @@ describe("VaultFactory", function () {
                 shareTokenName: "TST",
                 shareTokenSymbol: "TST",
                 vaultRewardController: owner.address,
-                feeConfigController: owner.address,
-                tokenBalancer: ZeroAddress
+                feeConfigController: owner.address
             }
 
             const feeConfig = {

@@ -293,6 +293,29 @@ async function deployTokenBalancer(contracts: Record<string, any>): Promise<Reco
   };
 }
 
+// Deploy AutoCompounder
+async function deployAutoCompounder(contracts: Record<string, any>): Promise<Record<string, any>> {
+  const [deployer] = await ethers.getSigners();
+
+  const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
+
+  const autoCompounder = await AutoCompounder.deploy(
+    "0xACE99ADFd95015dDB33ef19DCE44fee613DB82C2",
+    "0x0000000000000000000000000000000000423255",
+    "0x0000000000000000000000000000000000068cda",
+    "AToken",
+    "AToken"
+  );
+  await autoCompounder.waitForDeployment();
+
+  return {
+    ...contracts,
+    autoCompounder: {
+      AutoCompounder: autoCompounder.target
+    }
+  };
+}
+
 // deploy HTS Token Factory
 async function deployHTSTokenFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
   const [deployer] = await ethers.getSigners();
@@ -341,6 +364,7 @@ init()
   .then(deployComplianceModules)
   .then(deployVault)
   .then(deployTokenBalancer)
+  .then(deployAutoCompounder)
   .then(deployHTSTokenFactory)
   .then(exportDeploymentVersion)
   .then(finish)

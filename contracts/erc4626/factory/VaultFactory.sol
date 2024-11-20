@@ -74,8 +74,7 @@ contract VaultFactory is Ownable, IVaultFactory, ERC165 {
             feeConfig.token,
             feeConfig.feePercentage,
             vaultDetails.vaultRewardController,
-            vaultDetails.feeConfigController,
-            vaultDetails.tokenBalancer
+            vaultDetails.feeConfigController
         );
 
         bytes memory deploymentData = abi.encodePacked(_code, _constructData);
