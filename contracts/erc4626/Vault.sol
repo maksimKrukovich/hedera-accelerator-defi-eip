@@ -31,7 +31,7 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
     ERC20 public immutable _asset;
 
     // Share token
-    address public share;
+    address public _share;
 
     // Staked amount
     uint256 public assetTotalSupply;
@@ -129,8 +129,8 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         newToken.treasury = address(this);
         newToken.expiry = expiry;
         newToken.tokenKeys = keys;
-        share = SafeHTS.safeCreateFungibleToken(newToken, 0, _underlying.decimals());
-        emit CreatedToken(share);
+        _share = SafeHTS.safeCreateFungibleToken(newToken, 0, _underlying.decimals());
+        emit CreatedToken(_share);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -151,9 +151,9 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
 
         assetTotalSupply += assets;
 
-        SafeHTS.safeMintToken(share, uint64(assets), new bytes[](0));
+        SafeHTS.safeMintToken(_share, uint64(assets), new bytes[](0));
 
-        SafeHTS.safeTransferToken(share, address(this), msg.sender, int64(uint64(assets)));
+        SafeHTS.safeTransferToken(_share, address(this), msg.sender, int64(uint64(assets)));
 
         emit Deposit(msg.sender, receiver, assets, shares);
 
@@ -197,9 +197,9 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         // _burn(from, shares = previewWithdraw(amount));
         assetTotalSupply -= amount;
 
-        SafeHTS.safeTransferToken(share, msg.sender, address(this), int64(uint64(amount)));
+        SafeHTS.safeTransferToken(_share, msg.sender, address(this), int64(uint64(amount)));
 
-        SafeHTS.safeBurnToken(share, uint64(amount), new int64[](0));
+        SafeHTS.safeBurnToken(_share, uint64(amount), new int64[](0));
 
         _asset.safeTransfer(receiver, amount);
 
@@ -281,6 +281,13 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      */
     function getRewardTokens() public view returns (address[] memory) {
         return rewardTokens;
+    }
+
+    /**
+     * @dev Returns Share token address.
+     */
+    function share() public view override returns (address) {
+        return _share;
     }
 
     /**
@@ -417,7 +424,7 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
     function addReward(address _token, uint256 _amount) external payable onlyRole(VAULT_REWARD_CONTROLLER_ROLE) {
         require(_amount != 0, "Vault: Amount can't be zero");
         require(assetTotalSupply != 0, "Vault: No token staked yet");
-        require(_token != address(_asset) && _token != share, "Vault: Reward and Staking tokens cannot be same");
+        require(_token != address(_asset) && _token != _share, "Vault: Reward and Staking tokens cannot be same");
 
         if (rewardTokens.length == 10) revert MaxRewardTokensAmount();
 
@@ -442,7 +449,7 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @param _startPosition The starting index in the reward token list from which to begin claiming rewards.
      * @return The index of the start position after the last claimed reward and the total number of reward tokens.
      */
-    function claimAllReward(uint256 _startPosition) public payable returns (uint256, uint256) {
+    function claimAllReward(uint256 _startPosition) public payable override returns (uint256, uint256) {
         uint256 rewardTokensSize = rewardTokens.length;
         address _token = feeConfig.token;
 
@@ -465,7 +472,7 @@ contract HederaVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @param _rewardToken The reward address.
      * @return unclaimedAmount The calculated rewards.
      */
-    function getUserReward(address _user, address _rewardToken) public view returns (uint256 unclaimedAmount) {
+    function getUserReward(address _user, address _rewardToken) public view override returns (uint256 unclaimedAmount) {
         RewardsInfo storage _rewardInfo = tokensRewardInfo[_rewardToken];
 
         uint256 perShareAmount = _rewardInfo.amount;

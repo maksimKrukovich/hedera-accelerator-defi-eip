@@ -49,8 +49,8 @@ async function main() {
   //   operatorPrKey
   // );
 
-  // console.log("Staking token addrress", stakingTokenAddress);
-  // console.log("Reward token addrress", rewardTokenAddress);
+  // console.log("Staking token addrress", "0x" + stakingToken!.toSolidityAddress());
+  // console.log("Reward token addrress", "0x" + rewardToken!.toSolidityAddress());
 
   // Zero fee
   const feeConfig = {
@@ -66,26 +66,14 @@ async function main() {
   //   feePercentage: 1000,
   // };
 
-  // const HederaVault = await ethers.getContractFactory("HederaVault", {
-  //   libraries: {
-  //     PythUtils: "",
-  //   }
-  // });
+  // const HederaVault = await ethers.getContractFactory("HederaVault");
   // const hederaVault = await HederaVault.deploy(
-  //   stakingTokenAddress,
+  //   "0x00000000000000000000000000000000004e8c1b",
   //   "TST",
   //   "TST",
   //   feeConfig,
   //   deployer.address,
   //   deployer.address,
-  //   deployedOracle,
-  //   deployedSaucerSwap,
-  //   [rw1Token, rw2Token],
-  //   [50000, 50000],
-  //   [
-  //     rw1Id,
-  //     rw2Id
-  //   ],
   //   { from: deployer.address, gasLimit: 3000000, value: ethers.parseUnits("20", 18) }
   // );
   // console.log("Hash ", hederaVault.deploymentTransaction()?.hash);
@@ -143,32 +131,34 @@ async function main() {
 
   // console.log("AsyncVault deployed with address: ", await asyncVault.getAddress());
 
-  const TokenBalancer = await ethers.getContractFactory("TokenBalancer", {
-    libraries: {
-      PythUtils: "0x503187175Da79a0E62605D6CEC4e845E9ACC7C94"
-    }
-  });
-  const tokenBalancer = await TokenBalancer.deploy(
-    mockPyth,
-    deployedSaucerSwap,
-    usdcAddress
-    // [
-    //   "0x00000000000000000000000000000000004d0b03",
-    //   "0x00000000000000000000000000000000004d0b04"
-    // ],
-    // [
-    //   5000,
-    //   5000
-    // ],
-    // [
-    //   "0x1111111111111111111111111111111111111111111111111111111111111111",
-    //   "0x2222222222222222222222222222222222222222222222222222222222222222"
-    // ]
-  );
-  console.log("Hash ", tokenBalancer.deploymentTransaction()?.hash);
-  await tokenBalancer.waitForDeployment();
+  // const TokenBalancer = await ethers.getContractFactory("TokenBalancer", {
+  //   libraries: {
+  //     PythUtils: "0x503187175Da79a0E62605D6CEC4e845E9ACC7C94"
+  //   }
+  // });
+  // const tokenBalancer = await TokenBalancer.deploy(
+  //   mockPyth,
+  //   deployedSaucerSwap,
+  //   usdcAddress
+  // );
+  // console.log("Hash ", tokenBalancer.deploymentTransaction()?.hash);
+  // await tokenBalancer.waitForDeployment();
 
-  console.log("Token Balancer deployed with address: ", await tokenBalancer.getAddress());
+  // console.log("Token Balancer deployed with address: ", await tokenBalancer.getAddress());
+
+  const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
+  const autoCompounder = await AutoCompounder.deploy(
+    deployedSaucerSwap,
+    "0xCF93f51a1Cd2877958CB4f53703af3634699F747",
+    usdcAddress,
+    "aToken",
+    "aToken",
+    { from: deployer.address, gasLimit: 3000000, value: ethers.parseUnits("120", 18) }
+  );
+  console.log("Hash ", autoCompounder.deploymentTransaction()?.hash);
+  await autoCompounder.waitForDeployment();
+
+  console.log("AutoCompounder deployed with address: ", await autoCompounder.getAddress());
 }
 
 main().catch((error) => {
