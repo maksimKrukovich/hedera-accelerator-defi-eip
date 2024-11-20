@@ -127,7 +127,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable {
         require(assets != 0, "AutoCompounder: Invalid assets amount");
 
         // Calculate aToken amount to mint using exchange rate
-        amountToMint = (assets * 1e18) / exchangeRate();
+        amountToMint = assets / exchangeRate();
 
         balances[underlying] += assets;
 
@@ -148,7 +148,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable {
         require(aTokenAmount > 0, "AutoCompounder: Invalid aToken amount");
 
         // Calculate underlying amount to withdraw using exchange rate
-        underlyingAmount = (aTokenAmount * exchangeRate()) / 1e18;
+        underlyingAmount = aTokenAmount * exchangeRate();
 
         balances[underlying] += underlyingAmount;
 
@@ -193,7 +193,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable {
      */
     function exchangeRate() public view returns (uint256) {
         uint256 underlyingTotalSupply = vault.totalAssets();
-        return totalSupply == 0 ? 1e18 : (totalSupply * 1e18) / underlyingTotalSupply;
+        return totalSupply == 0 ? 1 : totalSupply / underlyingTotalSupply;
     }
 
     /**
