@@ -415,20 +415,28 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      */
     function claimAllReward(uint256 _startPosition) public payable override returns (uint256, uint256) {
         uint256 rewardTokensSize = rewardTokens.length;
-        address _token = feeConfig.token;
+        address _feeToken = feeConfig.token;
+        address _rewardToken;
+        uint256 reward;
 
         require(rewardTokensSize != 0, "HederaVault: No reward tokens exist");
 
         for (uint256 i = _startPosition; i < rewardTokensSize; i++) {
-            uint256 reward;
-            address token = rewardTokens[i];
+            _rewardToken = rewardTokens[i];
 
-            reward = (tokensRewardInfo[token].amount - userContribution[msg.sender].lastClaimedAmountT[token])
-                .mulDivDown(1, userContribution[msg.sender].sharesAmount);
-            userContribution[msg.sender].lastClaimedAmountT[token] = tokensRewardInfo[token].amount;
+            reward = (tokensRewardInfo[_rewardToken].amount -
+                userContribution[msg.sender].lastClaimedAmountT[_rewardToken]).mulDivDown(
+                    1,
+                    userContribution[msg.sender].sharesAmount
+                );
+            userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = tokensRewardInfo[_rewardToken].amount;
 
-            ERC20(token).safeTransfer(msg.sender, reward);
-            if (_token != address(0)) _deductFee(reward);
+            // Fee management
+            if (_feeToken != address(0)) {
+                ERC20(_rewardToken).safeTransfer(msg.sender, _deductFee(reward));
+            } else {
+                ERC20(_rewardToken).safeTransfer(msg.sender, reward);
+            }
         }
         return (_startPosition, rewardTokensSize);
     }

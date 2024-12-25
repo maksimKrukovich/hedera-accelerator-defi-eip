@@ -1,11 +1,11 @@
 import { anyValue, ethers, expect } from "../setup";
 import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
 import hre from "hardhat";
-import { BigNumberish, ZeroAddress } from "ethers";
+import { BigNumberish, Wallet, ZeroAddress } from "ethers";
 import { VaultToken, BasicVault } from "../../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
-async function deposit(vault: BasicVault, address: string, amount: BigNumberish, staker: HardhatEthersSigner) {
+async function deposit(vault: BasicVault, address: string, amount: BigNumberish, staker: Wallet | HardhatEthersSigner) {
     const token = await ethers.getContractAt(
         "VaultToken",
         address
@@ -17,31 +17,35 @@ async function deposit(vault: BasicVault, address: string, amount: BigNumberish,
 }
 
 // constants
+const testAccountAddress = "0x934b9afc8be0f78f698753a8f67131fa58cd9884";
+const operatorPrKeyTest = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY_TEST || '');
+const operatorAccountIdTest = AccountId.fromString(process.env.ACCOUNT_ID_TEST || '');
+
+const operatorPrKey = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY || '');
+const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
+
+const testAccount = new hre.ethers.Wallet(process.env.PRIVATE_KEY_TEST!, ethers.provider);
 
 // Tests
 describe("BasicVault", function () {
     async function deployFixture() {
         const [
-            owner,
-            staker,
+            owner
         ] = await ethers.getSigners();
 
         let client = Client.forTestnet();
-
-        const operatorPrKey = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY || '');
-        const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
 
         client.setOperator(
             operatorAccountId,
             operatorPrKey
         );
 
-        const erc20 = await hre.artifacts.readArtifact("contracts/erc4626/ERC20.sol:ERC20");
-
         const VaultToken = await ethers.getContractFactory("VaultToken");
         const stakingToken = await VaultToken.deploy(
         ) as VaultToken;
         await stakingToken.waitForDeployment();
+
+        await stakingToken.mint(testAccount.address, ethers.parseUnits("500000000", 18));
 
         const RewardToken = await ethers.getContractFactory("VaultToken");
         const rewardToken = await RewardToken.deploy(
@@ -72,6 +76,7 @@ describe("BasicVault", function () {
             stakingToken,
             client,
             owner,
+            testAccount
         };
     }
 
@@ -256,6 +261,95 @@ describe("BasicVault", function () {
                 rewardToken,
                 owner,
                 currentReward
+            );
+        });
+
+        it.only("two people, two type of reward, one withdraw, add two reward, all claim", async function () {
+            const { hederaVault, owner, stakingToken, rewardToken, client, testAccount } = await deployFixture();
+            const amountToWithdraw = 10;
+            const amountToStake = 112412;
+            const rewardToAdd = ethers.parseUnits("5000000", 18);
+
+            const txd = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, owner);
+
+            console.log(txd.hash);
+
+            // Change account and deposit
+            client.setOperator(
+                operatorAccountIdTest,
+                operatorPrKeyTest
+            );
+            const txp = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, testAccount);
+
+            console.log(txp.hash);
+
+            // Change account and add reward
+            client.setOperator(
+                operatorAccountId,
+                operatorPrKey
+            );
+            await rewardToken.approve(hederaVault.target, rewardToAdd);
+
+            await hederaVault.connect(owner).addReward(rewardToken.target, rewardToAdd);
+
+            const currentRewardOwner = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStaker = await hederaVault.getAllRewards(testAccountAddress);
+            console.log("Current reward owner: ", currentRewardOwner);
+            console.log("Current reward staker: ", currentRewardStaker);
+
+            await hederaVault.approve(hederaVault.target, amountToWithdraw);
+
+            const tx = await hederaVault.withdraw(
+                amountToWithdraw,
+                owner.address,
+                owner.address,
+                { gasLimit: 3000000 }
+            );
+
+            const currentRewardOwner1 = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStaker2 = await hederaVault.getAllRewards(testAccountAddress);
+            console.log("Current reward owner: ", currentRewardOwner1);
+            console.log("Current reward staker: ", currentRewardStaker2);
+
+            await expect(
+                tx
+            ).to.emit(hederaVault, "Withdraw")
+                .withArgs(owner.address, owner.address, amountToWithdraw, anyValue);
+
+            // Check share was transferred to contract
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                hederaVault,
+                owner,
+                -amountToWithdraw
+            );
+            // Check user received staking token
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                stakingToken,
+                owner,
+                amountToWithdraw
+            );
+
+            // Change account and claim reward
+            client.setOperator(
+                operatorAccountIdTest,
+                operatorPrKeyTest
+            );
+            const txClaim = await hederaVault.connect(testAccount).claimAllReward(0);
+
+            const currentRewardStaker3 = await hederaVault.getAllRewards(testAccountAddress);
+            console.log("Current reward staker: ", currentRewardStaker3);
+
+            // Check user claimed reward
+            await expect(
+                txClaim
+            ).to.changeTokenBalance(
+                rewardToken,
+                testAccountAddress,
+                197840253229750
             );
         });
 

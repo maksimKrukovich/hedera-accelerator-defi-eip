@@ -6,7 +6,7 @@ import {ERC20} from "./ERC20.sol";
 
 contract VaultToken is ERC20 {
     constructor() ERC20("VaultToken", "VLT", 8) {
-        _mint(msg.sender, 1000 * 10 ** 8);
+        _mint(msg.sender, 500000000 * 10 ** 18);
     }
 
     function mint(address to, uint256 amount) external {

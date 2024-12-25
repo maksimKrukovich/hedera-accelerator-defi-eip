@@ -5,13 +5,16 @@ pragma abicoder v2;
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {IERC7540} from "./interfaces/IERC7540.sol";
+import {IERC7540} from ".././interfaces/IERC7540.sol";
 
-import {ERC20} from "../erc4626/ERC20.sol";
-import {FeeConfiguration} from "../common/FeeConfiguration.sol";
+import {ERC20} from "../../erc4626/ERC20.sol";
+import {FeeConfiguration} from "../../common/FeeConfiguration.sol";
 
-import {FixedPointMathLib} from "../erc4626/FixedPointMathLib.sol";
-import {SafeTransferLib} from "../erc4626/SafeTransferLib.sol";
+import {FixedPointMathLib} from "../../erc4626/FixedPointMathLib.sol";
+import {SafeTransferLib} from "../../erc4626/SafeTransferLib.sol";
+
+import "../../common/safe-HTS/SafeHTS.sol";
+import "../../common/safe-HTS/IHederaTokenService.sol";
 
 /**
  * @title Async Vault
@@ -27,11 +30,18 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
     // Staking token
     ERC20 private immutable _asset;
 
+    // Share token
+    address private _share;
+
     // Staked amount
     uint256 public assetTotalSupply;
 
     // Reward tokens
     address[] public rewardTokens;
+
+    mapping(address => uint256) public pendingDepositBalance;
+
+    mapping(address => uint256) public claimableDepositBalance;
 
     mapping(address => uint256) public deposits;
 
@@ -40,6 +50,9 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
     mapping(address => UserInfo) public userContribution;
 
     mapping(address => RewardsInfo) public tokensRewardInfo;
+
+    uint256 public nextDepositRequestId;
+    uint256 public nextRedeemRequestId;
 
     struct RewardsInfo {
         uint256 amount;
@@ -150,26 +163,78 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
         __FeeConfiguration_init(_feeConfig, _vaultRewardController, _feeConfigController);
 
         _asset = _underlying;
+        nextDepositRequestId = 1;
+        nextRedeemRequestId = 1;
+
+        _createTokenWithContractAsOwner(_name, _symbol, _underlying);
     }
 
     /*///////////////////////////////////////////////////////////////
                         DEPOSIT/REDEEM ASYNC LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    function _createTokenWithContractAsOwner(string memory _name, string memory _symbol, ERC20 _underlying) internal {
+        SafeHTS.safeAssociateToken(address(_underlying), address(this));
+        uint256 supplyKeyType;
+        uint256 adminKeyType;
+
+        IHederaTokenService.KeyValue memory supplyKeyValue;
+        supplyKeyType = supplyKeyType.setBit(4);
+        supplyKeyValue.delegatableContractId = address(this);
+
+        IHederaTokenService.KeyValue memory adminKeyValue;
+        adminKeyType = adminKeyType.setBit(0);
+        adminKeyValue.delegatableContractId = address(this);
+
+        IHederaTokenService.TokenKey[] memory keys = new IHederaTokenService.TokenKey[](2);
+
+        keys[0] = IHederaTokenService.TokenKey(supplyKeyType, supplyKeyValue);
+        keys[1] = IHederaTokenService.TokenKey(adminKeyType, adminKeyValue);
+
+        IHederaTokenService.Expiry memory expiry;
+        expiry.autoRenewAccount = address(this);
+        expiry.autoRenewPeriod = 8000000;
+
+        IHederaTokenService.HederaToken memory newToken;
+        newToken.name = _name;
+        newToken.symbol = _symbol;
+        newToken.treasury = address(this);
+        newToken.expiry = expiry;
+        newToken.tokenKeys = keys;
+        _share = SafeHTS.safeCreateFungibleToken(newToken, 0, _underlying.decimals());
+        emit CreatedToken(_share);
+    }
+
     /**
-     * @dev Updates state for tracking rewards data.
+     * @dev Updates state for tracking rewards and asset data.
      *
-     * @param shares The minted amount of shares.
+     * @param amount The minted amount of shares.
      */
-    function _afterClaimDeposit(uint256 shares) internal {
+    function _afterClaimDeposit(uint256 amount) internal {
         if (!userContribution[msg.sender].exist) {
-            userContribution[msg.sender].sharesAmount = shares;
+            uint256 rewardTokensSize = rewardTokens.length;
+            for (uint256 i; i < rewardTokensSize; i++) {
+                address token = rewardTokens[i];
+                userContribution[msg.sender].lastClaimedAmountT[token] = tokensRewardInfo[token].amount;
+            }
+            userContribution[msg.sender].sharesAmount = amount;
             userContribution[msg.sender].exist = true;
-            claimAllReward(0);
         } else {
             claimAllReward(0);
-            userContribution[msg.sender].sharesAmount += shares;
+            userContribution[msg.sender].sharesAmount += amount;
+            assetTotalSupply += amount;
         }
+    }
+
+    /**
+     * @dev Updates state for tracking rewards and asset data.
+     *
+     * @param _amount The minted amount of shares.
+     */
+    function _beforeClaimWithdraw(uint256 _amount) internal {
+        claimAllReward(0);
+        userContribution[msg.sender].sharesAmount -= _amount;
+        assetTotalSupply -= _amount;
     }
 
     /**
@@ -180,9 +245,11 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      * @param owner The owner address.
      */
     function _createRedeemRequest(uint256 shares, address operator, address owner) internal {
-        redeems[owner] += shares;
+        redeems[owner] = shares;
 
         emit RedeemRequested(operator, owner, msg.sender, shares);
+
+        nextRedeemRequestId++;
     }
 
     /**
@@ -200,9 +267,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
 
         assetTotalSupply -= assets;
 
-        // Burn shares
         _burn(address(this), amountToRedeem);
-
         _asset.safeTransfer(owner, assets);
 
         emit ClaimRedeem(owner, receiver, assets, amountToRedeem);
@@ -219,9 +284,13 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
         shares = previewClaimDeposit(owner);
 
         deposits[owner] = 0;
+        claimableDepositBalance[owner] -= assets;
 
-        _mint(receiver, shares);
         _afterClaimDeposit(shares);
+
+        // Mint and transfer share
+        SafeHTS.safeMintToken(_share, uint64(shares), new bytes[](0));
+        SafeHTS.safeTransferToken(_share, address(this), msg.sender, int64(uint64(shares)));
 
         emit ClaimDeposit(owner, receiver, assets, shares);
     }
@@ -234,14 +303,20 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      * @param owner The owner address.
      */
     function _createDepositRequest(uint256 assets, address operator, address owner) internal {
-        deposits[owner] += assets;
-        assetTotalSupply += assets;
+        deposits[owner] = assets;
+        pendingDepositBalance[owner] += assets;
 
         emit DepositRequested(operator, owner, msg.sender, assets);
+
+        nextDepositRequestId++;
     }
 
     /**
-     * @inheritdoc IERC7540
+     * @dev Creates a new pending async deposit request.
+     *
+     * @param assets The amount of assets to deposit.
+     * @param operator The operator address.
+     * @param owner The owner address.
      */
     function requestDeposit(uint256 assets, address operator, address owner) external override {
         require(assets != 0, "AsyncVault: Invalid asset amount");
@@ -251,21 +326,21 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
             revert ERC7540CantRequestDepositOnBehalfOf();
         }
 
-        if (previewClaimDeposit(owner) > 0) {
-            _claimDeposit(owner, owner);
-        }
-
         if (assets > maxDepositRequest(owner)) {
             revert MaxDepositRequestExceeded(operator, assets, maxDepositRequest(owner));
         }
 
         _createDepositRequest(assets, operator, owner);
 
-        _asset.safeTransferFrom(owner, address(this), assets);
+        _asset.safeTransferFrom(msg.sender, address(this), assets);
     }
 
     /**
-     * @inheritdoc IERC7540
+     * @dev Creates a new pending async redeem request.
+     *
+     * @param shares The amount of shares to redeem.
+     * @param operator The operator address.
+     * @param owner The owner address.
      */
     function requestRedeem(uint256 shares, address operator, address owner) external override {
         require(shares != 0, "AsyncVault: Invalid share amount");
@@ -275,11 +350,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
             revert MaxRedeemRequestExceeded(operator, shares, maxRedeemRequest(owner));
         }
 
-        if (previewClaimRedeem(owner) > 0) {
-            _claimRedeem(owner, owner);
-        }
-
-        ERC20(address(this)).safeTransferFrom(owner, address(this), shares);
+        SafeHTS.safeTransferToken(_share, msg.sender, address(this), int64(uint64(shares)));
 
         // Create a new request
         _createRedeemRequest(shares, operator, owner);
@@ -293,12 +364,9 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      */
     function addReward(address _token, uint256 _amount) external payable onlyRole(VAULT_REWARD_CONTROLLER_ROLE) {
         require(_amount != 0, "AsyncVault: Amount can't be zero");
-        require(
-            _token != address(_asset) && _token != address(this),
-            "AsyncVault: Reward and Staking tokens cannot be same"
-        );
-        require(_token != address(0), "AsyncVault: Invalid reward token");
         require(assetTotalSupply != 0, "AsyncVault: No token staked yet");
+        require(_token != address(_asset) && _token != _share, "AsyncVault: Reward and Staking tokens cannot be same");
+        require(_token != address(0), "AsyncVault: Invalid reward token");
 
         if (rewardTokens.length == 10) revert MaxRewardTokensAmount();
 
@@ -308,6 +376,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
             rewardTokens.push(_token);
             rewardInfo.exist = true;
             rewardInfo.amount = perShareRewards;
+            SafeHTS.safeAssociateToken(_token, address(this));
             ERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         } else {
             tokensRewardInfo[_token].amount += perShareRewards;
@@ -324,24 +393,18 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      */
     function claimAllReward(uint256 _startPosition) public payable returns (uint256, uint256) {
         uint256 rewardTokensSize = rewardTokens.length;
-        address _feeToken = feeConfig.token;
-        address _rewardToken;
-        uint256 reward;
+        address _token = feeConfig.token;
 
         require(rewardTokensSize != 0, "AsyncVault: No reward tokens exist");
 
         for (uint256 i = _startPosition; i < rewardTokensSize; i++) {
-            _rewardToken = rewardTokens[i];
-
-            reward = getUserReward(msg.sender, _rewardToken);
-            userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = tokensRewardInfo[_rewardToken].amount;
-
-            // Fee management
-            if (_feeToken != address(0)) {
-                ERC20(_rewardToken).safeTransfer(msg.sender, _deductFee(reward));
-            } else {
-                ERC20(_rewardToken).safeTransfer(msg.sender, reward);
-            }
+            uint256 reward;
+            address token = rewardTokens[i];
+            reward = (tokensRewardInfo[token].amount - userContribution[msg.sender].lastClaimedAmountT[token])
+                .mulDivDown(1, userContribution[msg.sender].sharesAmount);
+            userContribution[msg.sender].lastClaimedAmountT[token] = tokensRewardInfo[token].amount;
+            SafeHTS.safeTransferToken(token, address(this), msg.sender, int64(uint64(reward)));
+            if (_token != address(0)) _deductFee(reward);
         }
         return (_startPosition, rewardTokensSize);
     }
@@ -361,9 +424,6 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
         uint256 userStakingTokenTotal = cInfo.sharesAmount;
         uint256 perShareClaimedAmount = cInfo.lastClaimedAmountT[_rewardToken];
         uint256 perShareUnclaimedAmount = perShareAmount - perShareClaimedAmount;
-
-        require(userStakingTokenTotal != 0, "AsyncVault: No staked tokens");
-
         unclaimedAmount = perShareUnclaimedAmount.mulDivDown(1, userStakingTokenTotal);
 
         if (feeConfig.feePercentage > 0) {
@@ -373,28 +433,13 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
     }
 
     /**
-     * @dev Returns all rewards for a user with fee considering.
-     *
-     * @param _user The user address.
-     * @return _rewards The rewards array.
-     */
-    function getAllRewards(address _user) public view returns (uint256[] memory _rewards) {
-        uint256 rewardsSize = rewardTokens.length;
-        _rewards = new uint256[](rewardsSize);
-
-        for (uint256 i = 0; i < rewardsSize; i++) {
-            _rewards[i] = getUserReward(_user, rewardTokens[i]);
-        }
-    }
-
-    /**
      * @dev Shows user how many shares he'll get after claim the request.
      *
-     * @param _owner The owner of the deposit request.
+     * @param owner The owner of the deposit request.
      * @return The amount of shares to get.
      */
-    function previewClaimDeposit(address _owner) public view returns (uint256) {
-        return _convertToShares(deposits[_owner]);
+    function previewClaimDeposit(address owner) public view returns (uint256) {
+        return _convertToShares(deposits[owner]);
     }
 
     /**
@@ -439,6 +484,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
         require(assets <= oldBalance && assets != 0, "AsyncVault: Invalid amount to decrease requested amount");
 
         deposits[msg.sender] -= assets;
+        pendingDepositBalance[msg.sender] -= assets;
 
         _asset.safeTransfer(msg.sender, assets);
 
@@ -452,7 +498,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      * @return The amount of shares.
      */
     function _convertToShares(uint256 assets) internal view returns (uint256) {
-        return totalSupply == 0 ? assets : assets.mulDivDown(1, totalAssets());
+        return assets.mulDivDown(totalSupply + 1, totalAssets() + 1);
     }
 
     /**
@@ -489,14 +535,20 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
     }
 
     /**
-     * @inheritdoc IERC7540
+     * @dev Returns the pending asset amount from the deposit request.
+     *
+     * @param owner The owner of the request.
+     * @return assets The assets amount.
      */
     function pendingDepositRequest(address owner) external view override returns (uint256 assets) {
         return deposits[owner];
     }
 
     /**
-     * @inheritdoc IERC7540
+     * @dev Returns the pending asset amount from the redeem request.
+     *
+     * @param owner The owner of the request.
+     * @return shares The shares amount.
      */
     function pendingRedeemRequest(address owner) external view override returns (uint256 shares) {
         return redeems[owner];
@@ -515,7 +567,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      * @dev Returns Share token address.
      */
     function share() public view override returns (address) {
-        return address(this);
+        return _share;
     }
 
     /**
