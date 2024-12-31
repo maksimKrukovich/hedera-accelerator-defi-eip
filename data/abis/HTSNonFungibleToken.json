@@ -1,7 +1,7 @@
 {
   "_format": "hh-sol-artifact-1",
   "contractName": "HTSNonFungibleToken",
-  "sourceName": "contracts/erc6960/extensions/HTSNonFungibleToken.sol",
+  "sourceName": "contracts/erc721/hts/HTSNonFungibleToken.sol",
   "abi": [
     {
       "inputs": [

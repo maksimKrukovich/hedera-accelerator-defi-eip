@@ -204,7 +204,7 @@
         },
         {
           "internalType": "bool",
-          "name": "isAutoCompaunder",
+          "name": "isAutoCompounder",
           "type": "bool"
         }
       ],
@@ -366,7 +366,7 @@
         },
         {
           "internalType": "bool",
-          "name": "isAutoCompaunder",
+          "name": "isAutoCompounder",
           "type": "bool"
         }
       ],
