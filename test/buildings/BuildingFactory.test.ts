@@ -25,6 +25,15 @@ async function deployFixture() {
   await nftCollection.waitForDeployment();
   const nftCollectionAddress = await nftCollection.getAddress();
 
+  const identityImplementation = await ethers.deployContract('Identity', [owner.address, true], owner);
+  const identityImplementationAuthority = await ethers.deployContract('ImplementationAuthority', [await identityImplementation.getAddress()], owner);
+  const identityFactory = await ethers.deployContract('IdFactory', [await identityImplementationAuthority.getAddress()], owner);
+  const identityGateway = await ethers.deployContract('IdentityGateway', [await identityFactory.getAddress(), []], owner);
+  const identityGatewayAddress = await identityGateway.getAddress();
+
+  // identityGateway must be the Owner of the IdFactory
+  await identityFactory.transferOwnership(identityGatewayAddress);
+
   // Beacon Upgradable Patter for Building
   const buildingImplementation = await ethers.deployContract('Building');
   const buildingImplementationAddress = await buildingImplementation.getAddress();
@@ -45,7 +54,8 @@ async function deployFixture() {
       nftCollectionAddress, 
       uniswapRouterAddress, 
       uniswapFactoryAddress,
-      buildingBeaconAddress
+      buildingBeaconAddress,
+      identityGatewayAddress,
     ],
     { 
       initializer: 'initialize'
@@ -70,6 +80,8 @@ async function deployFixture() {
     nftCollectionAddress,
     uniswapRouterAddress,
     uniswapFactoryAddress,
+    identityFactory,
+    identityGateway
   }
 }
 
@@ -116,26 +128,40 @@ describe('BuildingFactory', () => {
         buildingFactory, 
         uniswapFactoryAddress, 
         uniswapRouterAddress, 
-        nftCollection, 
+        nftCollection,
+        identityFactory
       } = await loadFixture(deployFixture);
 
       const tokenURI = "ipfs://building-nft-uri";
       const tx = await buildingFactory.newBuilding(tokenURI);
       await tx.wait();
+      
       const building  = await getDeployeBuilding(buildingFactory, tx.blockNumber as number);
-
+      
       expect(await building.getAddress()).to.be.properAddress;
       expect(await nftCollection.ownerOf(0)).to.be.equal(await building.getAddress());
       expect(await nftCollection.tokenURI(0)).to.be.equal(tokenURI);
       expect(await building.getUniswapFactory()).to.be.hexEqual(uniswapFactoryAddress);
       expect(await building.getUniswapRouter()).to.be.hexEqual(uniswapRouterAddress);
+      
+      const [firstBuilding] = await buildingFactory.getBuildingList();
+      
+      expect(firstBuilding[0]).to.be.hexEqual(await building.getAddress());
+      expect(firstBuilding[1]).to.be.equal(0n);
+      expect(firstBuilding[2]).to.be.equal(tokenURI);
+      expect(firstBuilding[3]).to.be.properAddress;
+      
+      const firstBuildingDetails = await buildingFactory.getBuildingDetails(await building.getAddress());
+      
+      expect(firstBuildingDetails[0]).to.be.hexEqual(await building.getAddress());
+      expect(firstBuildingDetails[1]).to.be.equal(0n);
+      expect(firstBuildingDetails[2]).to.be.equal(tokenURI);
+      expect(firstBuildingDetails[3]).to.be.equal(firstBuilding[3]);
 
-      const firstBuilding = await buildingFactory.buildingsList(0);
-
-      expect(firstBuilding.addr).to.be.hexEqual(await building.getAddress());
-      expect(firstBuilding.nftId).to.be.equal(0n);
-      expect(firstBuilding.tokenURI).to.be.equal(tokenURI);
-
+      const buildingAddress = firstBuilding[0];
+      const identityAddress = firstBuilding[3];
+      
+      await expect(tx).to.emit(identityFactory, 'WalletLinked').withArgs(buildingAddress, identityAddress);
     });
 
   });
