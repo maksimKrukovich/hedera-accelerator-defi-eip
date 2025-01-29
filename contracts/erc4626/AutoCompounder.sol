@@ -3,19 +3,17 @@ pragma solidity 0.8.24;
 pragma abicoder v2;
 
 import {ERC20} from "./ERC20.sol";
-import {IHRC} from "../common/hedera/IHRC.sol";
-
 import {FixedPointMathLib} from "./FixedPointMathLib.sol";
-import {SafeTransferLib} from "./SafeTransferLib.sol";
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IUniswapV2Router02} from "./interfaces/IUniswapV2Router02.sol";
 import {IAutoCompounder} from "./interfaces/IAutoCompounder.sol";
 import {IERC4626} from "./IERC4626.sol";
 
-import "../common/safe-HTS/SafeHTS.sol";
-import "../common/safe-HTS/IHederaTokenService.sol";
+import "hardhat/console.sol";
 
 /**
  * @title AutoCompounder
@@ -23,96 +21,55 @@ import "../common/safe-HTS/IHederaTokenService.sol";
  * The contract represents a simple AutoCompounder, that allows to reinvest vault rewards.
  */
 contract AutoCompounder is IAutoCompounder, ERC20, Ownable {
-    using SafeTransferLib for ERC20;
+    using SafeERC20 for IERC20;
     using FixedPointMathLib for uint256;
     using Bits for uint256;
 
     // Vault
-    IERC4626 public immutable vault;
+    IERC4626 private immutable _vault;
 
     // Underlying token
-    address public immutable underlying;
+    address private immutable _underlying;
 
     // Uniswap V2 Router
-    IUniswapV2Router02 public uniswapV2Router;
+    IUniswapV2Router02 private _uniswapV2Router;
 
     // AutoCompounder token
-    address public aToken;
+    address private _aToken;
 
     // USDC token
-    address public usdc;
+    address private _usdc;
 
     // Uniswap swap path to convert from USDC to underlying asset
-    address[] internal path;
-
-    // Token balances
-    mapping(address token => uint256 balance) public balances;
+    address[] internal _path;
 
     /**
      * @dev Initializes contract with passed parameters.
      *
-     * @param _uniswapV2Router The address of the Uniswap Router contract.
-     * @param _vault The Vault contract address.
-     * @param _usdc The address of the USDC token.
-     * @param _name The aToken name.
-     * @param _symbol The aToken symbol.
+     * @param uniswapV2Router_ The address of the Uniswap Router contract.
+     * @param vault_ The Vault contract address.
+     * @param usdc_ The address of the USDC token.
+     * @param name_ The aToken name.
+     * @param symbol_ The aToken symbol.
      */
     constructor(
-        address _uniswapV2Router,
-        address _vault,
-        address _usdc,
-        string memory _name,
-        string memory _symbol
-    ) payable ERC20(_name, _symbol, ERC20(IERC4626(_vault).asset()).decimals()) Ownable(msg.sender) {
-        require(_uniswapV2Router != address(0), "TokenBalancer: Invalid Uniswap Router address");
-        require(_vault != address(0), "TokenBalancer: Invalid Vault address");
-        require(_usdc != address(0), "TokenBalancer: Invalid USDC token address");
+        address uniswapV2Router_,
+        address vault_,
+        address usdc_,
+        string memory name_,
+        string memory symbol_
+    ) payable ERC20(name_, symbol_, ERC20(IERC4626(vault_).asset()).decimals()) Ownable(msg.sender) {
+        require(uniswapV2Router_ != address(0), "AutoCompounder: Invalid Uniswap Router address");
+        require(vault_ != address(0), "AutoCompounder: Invalid Vault address");
+        require(usdc_ != address(0), "AutoCompounder: Invalid USDC token address");
 
-        uniswapV2Router = IUniswapV2Router02(_uniswapV2Router);
-        underlying = IERC4626(_vault).asset();
-        vault = IERC4626(_vault);
-        usdc = _usdc;
+        _uniswapV2Router = IUniswapV2Router02(uniswapV2Router_);
+        _underlying = IERC4626(vault_).asset();
+        _vault = IERC4626(vault_);
+        _usdc = usdc_;
 
-        path = new address[](2);
-        (path[0], path[1]) = (usdc, underlying);
-
-        // Token associations
-        SafeHTS.safeAssociateToken(usdc, address(this));
-        SafeHTS.safeAssociateToken(underlying, address(this));
-        SafeHTS.safeAssociateToken(vault.share(), address(this));
-
-        _createTokenWithContractAsOwner(_name, _symbol, ERC20(underlying));
-    }
-
-    function _createTokenWithContractAsOwner(string memory _name, string memory _symbol, ERC20 _underlying) internal {
-        uint256 supplyKeyType;
-        uint256 adminKeyType;
-
-        IHederaTokenService.KeyValue memory supplyKeyValue;
-        supplyKeyType = supplyKeyType.setBit(4);
-        supplyKeyValue.delegatableContractId = address(this);
-
-        IHederaTokenService.KeyValue memory adminKeyValue;
-        adminKeyType = adminKeyType.setBit(0);
-        adminKeyValue.delegatableContractId = address(this);
-
-        IHederaTokenService.TokenKey[] memory keys = new IHederaTokenService.TokenKey[](2);
-
-        keys[0] = IHederaTokenService.TokenKey(supplyKeyType, supplyKeyValue);
-        keys[1] = IHederaTokenService.TokenKey(adminKeyType, adminKeyValue);
-
-        IHederaTokenService.Expiry memory expiry;
-        expiry.autoRenewAccount = address(this);
-        expiry.autoRenewPeriod = 8000000;
-
-        IHederaTokenService.HederaToken memory newToken;
-        newToken.name = _name;
-        newToken.symbol = _symbol;
-        newToken.treasury = address(this);
-        newToken.expiry = expiry;
-        newToken.tokenKeys = keys;
-        aToken = SafeHTS.safeCreateFungibleToken(newToken, 0, _underlying.decimals());
-        emit CreatedToken(aToken);
+        _path = new address[](2);
+        (_path[0], _path[1]) = (usdc(), asset());
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -123,45 +80,42 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable {
      * @dev Deposits staking token to the Vault and returns shares.
      * @inheritdoc IAutoCompounder
      */
-    function deposit(uint256 assets) public override returns (uint256 amountToMint) {
+    function deposit(uint256 assets, address receiver) external override returns (uint256 amountToMint) {
         require(assets != 0, "AutoCompounder: Invalid assets amount");
+        require(receiver != address(0), "AutoCompounder: Invalid receiver address");
 
         // Calculate aToken amount to mint using exchange rate
-        amountToMint = assets / exchangeRate();
+        amountToMint = assets / exchangeRate(vault());
 
-        balances[underlying] += assets;
+        IERC20(asset()).safeTransferFrom(msg.sender, address(this), assets);
 
-        SafeHTS.safeTransferToken(underlying, msg.sender, address(this), int64(uint64(assets)));
-
-        SafeHTS.safeApprove(underlying, address(vault), assets);
-        vault.deposit(assets, address(this));
+        // Deposit underlying
+        IERC20(asset()).approve(vault(), assets);
+        _vault.deposit(assets, address(this));
 
         // Mint and transfer aToken
-        SafeHTS.safeMintToken(aToken, uint64(amountToMint), new bytes[](0));
-        SafeHTS.safeTransferToken(aToken, address(this), msg.sender, int64(uint64(amountToMint)));
+        _mint(receiver, amountToMint);
 
-        emit Deposit(msg.sender, assets, amountToMint);
+        emit Deposit(receiver, assets, amountToMint);
     }
 
     /**
      * @dev Withdraws underlying asset from the Vault.
      * @inheritdoc IAutoCompounder
      */
-    function withdraw(uint256 aTokenAmount) external override returns (uint256 underlyingAmount) {
+    function withdraw(uint256 aTokenAmount, address receiver) external override returns (uint256 underlyingAmount) {
         require(aTokenAmount > 0, "AutoCompounder: Invalid aToken amount");
+        require(receiver != address(0), "AutoCompounder: Invalid receiver address");
 
         // Calculate underlying amount to withdraw using exchange rate
-        underlyingAmount = aTokenAmount * exchangeRate();
-
-        balances[underlying] += underlyingAmount;
+        underlyingAmount = aTokenAmount * exchangeRate(vault());
 
         // Burn aToken
-        SafeHTS.safeTransferToken(aToken, msg.sender, address(this), int64(uint64(aTokenAmount)));
-        SafeHTS.safeBurnToken(aToken, uint64(aTokenAmount), new int64[](0));
+        _burn(msg.sender, aTokenAmount);
 
-        // Approve share to burn
-        SafeHTS.safeApprove(vault.share(), address(vault), underlyingAmount);
-        vault.withdraw(underlyingAmount, address(this), address(this));
+        // Withdraw underlying with rewards
+        IERC20(_vault.share()).approve(vault(), underlyingAmount);
+        _vault.withdraw(underlyingAmount, receiver, address(this));
 
         emit Withdraw(msg.sender, aTokenAmount, underlyingAmount);
     }
@@ -171,21 +125,27 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable {
      * @inheritdoc IAutoCompounder
      */
     function claim() external {
-        uint256 reward = vault.getUserReward(address(this), usdc);
+        // Check if reward is available
+        uint256 reward = _vault.getUserReward(address(this), usdc());
 
         if (reward != 0) {
-            vault.claimAllReward(0);
+            // Claim reward
+            _vault.claimAllReward(0, address(this));
 
-            uint256[] memory amounts = uniswapV2Router.swapExactTokensForTokens(
+            // Swap reward for underlying
+            IERC20(usdc()).approve(uniswapV2Router(), reward);
+            uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
                 reward,
-                0,
-                path,
+                0, // Accept any amount
+                _path,
                 address(this),
                 block.timestamp
             );
 
-            SafeHTS.safeApprove(underlying, address(vault), amounts[1]);
-            vault.deposit(amounts[1], address(this));
+            // Reinvest swapped underlying
+            IERC20(asset()).approve(vault(), amounts[1]);
+            _vault.deposit(amounts[1], address(this));
+
             emit Claim(amounts[1]);
         } else {
             revert ZeroReward();
@@ -193,20 +153,50 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable {
     }
 
     /**
-     * @dev Returns the exchange rate: aToken / vToken.
+     * @dev Returns the exchange rate for token.
      * @inheritdoc IAutoCompounder
      */
-    function exchangeRate() public view returns (uint256) {
-        uint256 underlyingTotalSupply = vault.totalAssets();
-        return totalSupply == 0 ? 1 : totalSupply / underlyingTotalSupply;
+    function exchangeRate(address token) public view override returns (uint256 exchangeRate) {
+        uint256 vTotalSupply = _vault.totalSupply();
+        uint256 aTotalSupply = totalSupply();
+
+        if (token == address(_vault)) {
+            exchangeRate = aTotalSupply == 0 ? 1 : aTotalSupply / vTotalSupply;
+        } else {
+            uint256 vTokenToUnderlyingRate = _vault.exchangeRate();
+
+            uint256 aTokenTovTokenRate = aTotalSupply == 0 ? 1 : aTotalSupply / vTotalSupply;
+
+            exchangeRate = aTokenTovTokenRate * vTokenToUnderlyingRate;
+        }
     }
 
     /**
-     * @dev Returns underlying asset address.
-     * @inheritdoc IAutoCompounder
+     * @dev Returns the underlying asset address.
      */
     function asset() public view returns (address) {
-        return underlying;
+        return _underlying;
+    }
+
+    /**
+     * @dev Returns the USDC token address.
+     */
+    function usdc() public view returns (address) {
+        return _usdc;
+    }
+
+    /**
+     * @dev Returns the Uniswap V2 router address.
+     */
+    function uniswapV2Router() public view returns (address) {
+        return address(_uniswapV2Router);
+    }
+
+    /**
+     * @dev Returns the corresponding Vault address.
+     */
+    function vault() public view returns (address) {
+        return address(_vault);
     }
 }
 

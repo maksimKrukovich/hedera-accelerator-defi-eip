@@ -26,6 +26,13 @@ const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
 
 const testAccount = new hre.ethers.Wallet(process.env.PRIVATE_KEY_TEST!, ethers.provider);
 
+// Zero fee
+const feeConfig = {
+    receiver: ZeroAddress,
+    token: ZeroAddress,
+    feePercentage: 0,
+};
+
 // Tests
 describe("BasicVault", function () {
     async function deployFixture() {
@@ -51,13 +58,6 @@ describe("BasicVault", function () {
         const rewardToken = await RewardToken.deploy(
         ) as VaultToken;
         await rewardToken.waitForDeployment();
-
-        // Zero fee
-        const feeConfig = {
-            receiver: ZeroAddress,
-            token: ZeroAddress,
-            feePercentage: 0,
-        };
 
         const BasicVault = await ethers.getContractFactory("BasicVault");
         const hederaVault = await BasicVault.deploy(
@@ -142,7 +142,7 @@ describe("BasicVault", function () {
 
             // Check revert if no rewards
             await expect(
-                hederaVault.claimAllReward(0)
+                hederaVault.claimAllReward(0, owner.address)
             ).to.be.revertedWith("HederaVault: No reward tokens exist");
 
             await rewardToken.approve(hederaVault.target, rewardAmount);
@@ -338,7 +338,7 @@ describe("BasicVault", function () {
                 operatorAccountIdTest,
                 operatorPrKeyTest
             );
-            const txClaim = await hederaVault.connect(testAccount).claimAllReward(0);
+            const txClaim = await hederaVault.connect(testAccount).claimAllReward(0, owner.address);
 
             const currentRewardStaker3 = await hederaVault.getAllRewards(testAccountAddress);
             console.log("Current reward staker: ", currentRewardStaker3);

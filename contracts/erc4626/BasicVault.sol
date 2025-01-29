@@ -5,6 +5,7 @@ pragma abicoder v2;
 import {ERC20} from "./ERC20.sol";
 import {IERC4626} from "./IERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {FeeConfiguration} from "../common/FeeConfiguration.sol";
 
@@ -28,16 +29,16 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
     ERC20 private immutable _asset;
 
     // Staked amount
-    uint256 public assetTotalSupply;
+    uint256 private _assetTotalSupply;
 
     // Reward tokens
-    address[] public rewardTokens;
+    address[] private _rewardTokens;
 
     // Info by user
-    mapping(address => UserInfo) public userContribution;
+    mapping(address => UserInfo) private _userContribution;
 
     // Reward info by user
-    mapping(address => RewardsInfo) public tokensRewardInfo;
+    mapping(address => RewardsInfo) private _tokensRewardInfo;
 
     // User Info struct
     struct UserInfo {
@@ -114,7 +115,7 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
 
         emit Deposit(msg.sender, receiver, assets, shares);
 
-        afterDeposit(assets);
+        afterDeposit(assets, receiver);
     }
 
     /**
@@ -135,7 +136,7 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
 
         _asset.safeTransferFrom(msg.sender, address(this), amount);
 
-        afterDeposit(amount);
+        afterDeposit(amount, receiver);
     }
 
     /**
@@ -154,9 +155,9 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         require(receiver != address(0), "HederaVault: Invalid receiver address");
         require(from != address(0), "HederaVault: Invalid from address");
         require((shares = previewWithdraw(amount)) != 0, "HederaVault: Zero assets");
-        require(userContribution[from].sharesAmount >= shares, "HederaVault: Not enough share on the balance");
+        require(_userContribution[from].sharesAmount >= shares, "HederaVault: Not enough share on the balance");
 
-        beforeWithdraw(amount);
+        beforeWithdraw(amount, receiver);
 
         _burn(from, amount);
 
@@ -181,9 +182,9 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         require(receiver != address(0), "HederaVault: Invalid receiver address");
         require(from != address(0), "HederaVault: Invalid from address");
         require((amount = previewRedeem(shares)) != 0, "HederaVault: Zero assets");
-        require(userContribution[msg.sender].sharesAmount >= shares, "HederaVault: Not enough share on the balance");
+        require(_userContribution[msg.sender].sharesAmount >= shares, "HederaVault: Not enough share on the balance");
 
-        beforeWithdraw(amount);
+        beforeWithdraw(amount, receiver);
 
         _burn(from, shares);
 
@@ -201,10 +202,10 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      *
      * @param _amount The amount of shares.
      */
-    function beforeWithdraw(uint256 _amount) internal {
-        claimAllReward(0);
-        userContribution[msg.sender].sharesAmount -= _amount;
-        assetTotalSupply -= _amount;
+    function beforeWithdraw(uint256 _amount, address rewardReceiver) internal {
+        claimAllReward(0, rewardReceiver);
+        _userContribution[msg.sender].sharesAmount -= _amount;
+        _assetTotalSupply -= _amount;
     }
 
     /**
@@ -212,22 +213,27 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      *
      * @param _amount The amount of shares.
      */
-    function afterDeposit(uint256 _amount) internal {
-        if (!userContribution[msg.sender].exist) {
-            uint256 rewardTokensSize = rewardTokens.length;
+    function afterDeposit(uint256 _amount, address rewardReceiver) internal {
+        if (!_userContribution[msg.sender].exist) {
+            uint256 rewardTokensSize = _rewardTokens.length;
             for (uint256 i; i < rewardTokensSize; i++) {
-                address token = rewardTokens[i];
-                userContribution[msg.sender].lastClaimedAmountT[token] = tokensRewardInfo[token].amount;
+                address token = _rewardTokens[i];
+                _userContribution[msg.sender].lastClaimedAmountT[token] = _tokensRewardInfo[token].amount;
             }
-            userContribution[msg.sender].sharesAmount = _amount;
-            userContribution[msg.sender].exist = true;
-            userContribution[msg.sender].lastLockedTime = block.timestamp;
-            assetTotalSupply += _amount;
+            _userContribution[msg.sender].sharesAmount = _amount;
+            _userContribution[msg.sender].exist = true;
+            _userContribution[msg.sender].lastLockedTime = block.timestamp;
+            _assetTotalSupply += _amount;
         } else {
-            claimAllReward(0);
-            userContribution[msg.sender].sharesAmount += _amount;
-            userContribution[msg.sender].lastLockedTime = block.timestamp;
-            assetTotalSupply += _amount;
+            if (_userContribution[msg.sender].sharesAmount == 0) {
+                _userContribution[msg.sender].sharesAmount += _amount;
+                _assetTotalSupply += _amount;
+            } else {
+                claimAllReward(0, rewardReceiver);
+                _userContribution[msg.sender].sharesAmount += _amount;
+                _userContribution[msg.sender].lastLockedTime = block.timestamp;
+                _assetTotalSupply += _amount;
+            }
         }
     }
 
@@ -241,7 +247,7 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @return Reward tokens.
      */
     function getRewardTokens() public view returns (address[] memory) {
-        return rewardTokens;
+        return _rewardTokens;
     }
 
     /**
@@ -331,7 +337,7 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @return shares The estimated amount of shares that can be minted.
      */
     function previewDeposit(uint256 amount) public view override returns (uint256 shares) {
-        uint256 supply = totalSupply;
+        uint256 supply = totalSupply();
 
         return supply == 0 ? amount : amount.mulDivDown(1, totalAssets());
     }
@@ -343,9 +349,9 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @return amount The estimated assets amount.
      */
     function previewMint(uint256 shares) public view override returns (uint256 amount) {
-        uint256 supply = totalSupply;
+        uint256 supply = totalSupply();
 
-        return supply == 0 ? shares : shares.mulDivUp(totalAssets(), totalSupply);
+        return supply == 0 ? shares : shares.mulDivUp(totalAssets(), supply);
     }
 
     /**
@@ -367,9 +373,23 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @return amount The estimated assets amount that can be redeemed.
      */
     function previewRedeem(uint256 shares) public view override returns (uint256 amount) {
-        uint256 supply = totalSupply;
+        uint256 supply = totalSupply();
 
-        return supply == 0 ? shares : shares.mulDivDown(totalAssets(), totalSupply);
+        return supply == 0 ? shares : shares.mulDivDown(totalAssets(), supply);
+    }
+
+    /**
+     * @dev Returns asset total supply.
+     */
+    function assetTotalSupply() public view returns (uint256) {
+        return _assetTotalSupply;
+    }
+
+    /**
+     * @dev Returns exchange rate for share/underlying.
+     */
+    function exchangeRate() external pure override returns (uint256) {
+        return 1;
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -389,19 +409,19 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
             "HederaVault: Reward and Staking tokens cannot be same"
         );
         require(_token != address(0), "HederaVault: Invalid reward token");
-        require(assetTotalSupply != 0, "HederaVault: No token staked yet");
+        require(assetTotalSupply() != 0, "HederaVault: No token staked yet");
 
-        if (rewardTokens.length == 10) revert MaxRewardTokensAmount();
+        if (_rewardTokens.length == 10) revert MaxRewardTokensAmount();
 
-        uint256 perShareRewards = _amount.mulDivDown(1, assetTotalSupply);
-        RewardsInfo storage rewardInfo = tokensRewardInfo[_token];
+        uint256 perShareRewards = _amount.mulDivDown(1, assetTotalSupply());
+        RewardsInfo storage rewardInfo = _tokensRewardInfo[_token];
         if (!rewardInfo.exist) {
-            rewardTokens.push(_token);
+            _rewardTokens.push(_token);
             rewardInfo.exist = true;
             rewardInfo.amount = perShareRewards;
             ERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         } else {
-            tokensRewardInfo[_token].amount += perShareRewards;
+            _tokensRewardInfo[_token].amount += perShareRewards;
             ERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         }
         emit RewardAdded(_token, _amount);
@@ -413,8 +433,11 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @param _startPosition The starting index in the reward token list from which to begin claiming rewards.
      * @return The index of the start position after the last claimed reward and the total number of reward tokens.
      */
-    function claimAllReward(uint256 _startPosition) public payable override returns (uint256, uint256) {
-        uint256 rewardTokensSize = rewardTokens.length;
+    function claimAllReward(
+        uint256 _startPosition,
+        address receiver
+    ) public payable override returns (uint256, uint256) {
+        uint256 rewardTokensSize = _rewardTokens.length;
         address _feeToken = feeConfig.token;
         address _rewardToken;
         uint256 reward;
@@ -422,20 +445,16 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         require(rewardTokensSize != 0, "HederaVault: No reward tokens exist");
 
         for (uint256 i = _startPosition; i < rewardTokensSize; i++) {
-            _rewardToken = rewardTokens[i];
+            _rewardToken = _rewardTokens[i];
 
-            reward = (tokensRewardInfo[_rewardToken].amount -
-                userContribution[msg.sender].lastClaimedAmountT[_rewardToken]).mulDivDown(
-                    1,
-                    userContribution[msg.sender].sharesAmount
-                );
-            userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = tokensRewardInfo[_rewardToken].amount;
+            reward = getUserReward(msg.sender, _rewardToken);
+            _userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = _tokensRewardInfo[_rewardToken].amount;
 
             // Fee management
             if (_feeToken != address(0)) {
-                ERC20(_rewardToken).safeTransfer(msg.sender, _deductFee(reward));
+                ERC20(_rewardToken).safeTransfer(receiver, _deductFee(reward));
             } else {
-                ERC20(_rewardToken).safeTransfer(msg.sender, reward);
+                ERC20(_rewardToken).safeTransfer(receiver, reward);
             }
         }
         return (_startPosition, rewardTokensSize);
@@ -449,14 +468,17 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @return unclaimedAmount The calculated rewards.
      */
     function getUserReward(address _user, address _rewardToken) public view override returns (uint256 unclaimedAmount) {
-        RewardsInfo storage _rewardInfo = tokensRewardInfo[_rewardToken];
+        RewardsInfo storage _rewardInfo = _tokensRewardInfo[_rewardToken];
 
         uint256 perShareAmount = _rewardInfo.amount;
-        UserInfo storage cInfo = userContribution[_user];
+        UserInfo storage cInfo = _userContribution[_user];
         uint256 userStakingTokenTotal = cInfo.sharesAmount;
         uint256 perShareClaimedAmount = cInfo.lastClaimedAmountT[_rewardToken];
         uint256 perShareUnclaimedAmount = perShareAmount - perShareClaimedAmount;
-        unclaimedAmount = perShareUnclaimedAmount.mulDivDown(1, userStakingTokenTotal);
+
+        // Add precision to consider small rewards
+        unclaimedAmount = (perShareUnclaimedAmount * 1e36) / userStakingTokenTotal;
+        unclaimedAmount = unclaimedAmount / 1e18;
 
         if (feeConfig.feePercentage > 0) {
             uint256 currentFee = _calculateFee(unclaimedAmount, feeConfig.feePercentage);
@@ -471,11 +493,11 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
      * @return _rewards The rewards array.
      */
     function getAllRewards(address _user) public view returns (uint256[] memory _rewards) {
-        uint256 rewardsSize = rewardTokens.length;
+        uint256 rewardsSize = _rewardTokens.length;
         _rewards = new uint256[](rewardsSize);
 
         for (uint256 i = 0; i < rewardsSize; i++) {
-            _rewards[i] = getUserReward(_user, rewardTokens[i]);
+            _rewards[i] = getUserReward(_user, _rewardTokens[i]);
         }
     }
 }

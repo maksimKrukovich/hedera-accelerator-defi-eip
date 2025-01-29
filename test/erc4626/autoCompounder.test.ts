@@ -1,23 +1,31 @@
 import { anyValue, ethers, expect } from "../setup";
-import { PrivateKey, Client, AccountId, TokenAssociateTransaction, AccountBalanceQuery } from "@hashgraph/sdk";
+import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
+import { ZeroAddress } from "ethers";
+import { VaultToken, BasicVault, AutoCompounder } from "../../typechain-types";
 import hre from "hardhat";
 
 import {
     usdcAddress,
     uniswapRouterAddress,
-    pythOracleAddress,
-    pythUtilsAddress
+    uniswapFactoryAddress
 } from "../../constants";
 
 // constants
-const deployedAutoCompounder = "0xf014b970414602df2b293ef4f2d6b6f306cf2c1d";
+const testAccountAddress = "0x934b9afc8be0f78f698753a8f67131fa58cd9884";
+const operatorPrKeyTest = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY_TEST || '');
+const operatorAccountIdTest = AccountId.fromString(process.env.ACCOUNT_ID_TEST || '');
 
-const rewardTokenId = "0.0.4310077";
-const rewardTokenAddress = "0x0000000000000000000000000000000000423252";
-const shareTokenAddress = "0x00000000000000000000000000000000004eb98f";
-const shareTokenId = "0.0.5159311";
-const aTokenAddress = "0x00000000000000000000000000000000004ebd78";
-const aTokenId = "0.0.5160312";
+const operatorPrKey = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY || '');
+const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
+
+const testAccount = new hre.ethers.Wallet(process.env.PRIVATE_KEY_TEST!, ethers.provider);
+
+// Zero fee
+const feeConfig = {
+    receiver: ZeroAddress,
+    token: ZeroAddress,
+    feePercentage: 0,
+};
 
 // Tests
 describe("AutoCompounder", function () {
@@ -30,75 +38,66 @@ describe("AutoCompounder", function () {
 
         const operatorPrKey = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY || '');
         const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
-        const stAccountId = AccountId.fromString("0.0.2673429");
 
         client.setOperator(
             operatorAccountId,
             operatorPrKey
         );
 
-        const erc20 = await hre.artifacts.readArtifact("contracts/erc4626/ERC20.sol:ERC20");
+        const VaultToken = await ethers.getContractFactory("VaultToken");
+        const stakingToken = await VaultToken.deploy(
+        ) as VaultToken;
+        await stakingToken.waitForDeployment();
 
-        const sharesTokenAssociate = await new TokenAssociateTransaction()
-            .setAccountId(operatorAccountId)
-            .setTokenIds([shareTokenId])
-            .execute(client);
-        const aTokenAssociate = await new TokenAssociateTransaction()
-            .setAccountId(operatorAccountId)
-            .setTokenIds([aTokenId])
-            .execute(client);
+        await stakingToken.mint(testAccount.address, ethers.parseUnits("500000000", 18));
 
-        const autoCompounder = await ethers.getContractAt(
-            "AutoCompounder",
-            deployedAutoCompounder
-        );
+        const RewardToken = await ethers.getContractFactory("VaultToken");
+        const rewardToken = await RewardToken.deploy(
+        ) as VaultToken;
+        await rewardToken.waitForDeployment();
 
-        const stakingToken = await ethers.getContractAt(
-            erc20.abi,
-            await autoCompounder.asset()
-        );
+        const BasicVault = await ethers.getContractFactory("BasicVault");
+        const basicVault = await BasicVault.deploy(
+            stakingToken.target,
+            "TST",
+            "TST",
+            feeConfig,
+            owner.address,
+            owner.address
+        ) as BasicVault;
+        await basicVault.waitForDeployment();
 
-        const share = await ethers.getContractAt(
-            erc20.abi,
-            shareTokenAddress
-        );
-
-        const aToken = await ethers.getContractAt(
-            erc20.abi,
-            await autoCompounder.aToken()
-        );
-
-        // await TokenTransfer(newStakingTokenId, operatorAccountId, "0.0.3638358", 1000, client);
-
-        // const stakingTokenOperatorBalance = await (
-        //     await TokenBalance(operatorAccountId, client)
-        // ).tokens!.get(newRewardTokenId);
-        // console.log("Reward token balance: ", stakingTokenOperatorBalance.toString());
-
-        // const tx = await rewardToken.approve(hederaVault.target, 100);
-
-        // const rewTx = await hederaVault.addReward(rewardTokenAddress, 100, { gasLimit: 3000000 });
+        const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
+        const autoCompounder = await AutoCompounder.deploy(
+            uniswapRouterAddress,
+            basicVault,
+            rewardToken.target, // TODO: change to real USDC
+            "TST",
+            "TST"
+        ) as AutoCompounder;
+        await autoCompounder.waitForDeployment();
 
         return {
             autoCompounder,
+            basicVault,
             stakingToken,
-            aToken,
-            share,
+            rewardToken,
             client,
             owner,
         };
     }
 
     describe("deposit", function () {
-        it.only("Should deposit tokens and return shares", async function () {
-            const { autoCompounder, stakingToken, owner } = await deployFixture();
-            const amountToDeposit = 1004;
+        it("Should deposit tokens and return shares", async function () {
+            const { autoCompounder, stakingToken, owner, basicVault } = await deployFixture();
+            const amountToDeposit = ethers.parseUnits("170", 18);
 
             await stakingToken.approve(autoCompounder.target, amountToDeposit);
 
-            const tx = await autoCompounder.connect(owner).deposit(
-                amountToDeposit!,
-                { gasLimit: 3000000 }
+            const tx = await autoCompounder.deposit(
+                amountToDeposit,
+                owner.address,
+                { from: owner.address, gasLimit: 3000000 }
             );
 
             console.log(tx.hash);
@@ -107,36 +106,64 @@ describe("AutoCompounder", function () {
                 tx
             ).to.emit(autoCompounder, "Deposit")
                 .withArgs(owner.address, amountToDeposit, anyValue);
+
+            // Check share token was transferred to contract
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                basicVault,
+                autoCompounder.target,
+                amountToDeposit
+            );
+            // Check auto token was transferred to contract
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                autoCompounder,
+                owner.address,
+                amountToDeposit / await autoCompounder.exchangeRate(basicVault.target)
+            );
         });
 
         it("Should revert in case of zero assets", async function () {
             const { autoCompounder, owner } = await deployFixture();
             const amountToDeposit = 0;
 
-            const tx = await autoCompounder.connect(owner).deposit(
-                amountToDeposit!,
-                { gasLimit: 3000000 }
-            );
-
-            console.log(tx.hash);
-
             await expect(
-                tx
+                autoCompounder.deposit(
+                    amountToDeposit,
+                    owner.address
+                )
             ).to.be.revertedWith("AutoCompounder: Invalid assets amount");
         });
     });
 
     describe("withdraw", function () {
         it("Should withdraw tokens", async function () {
-            const { autoCompounder, owner, share, aToken } = await deployFixture();
+            const { autoCompounder, basicVault, stakingToken, rewardToken, owner } = await deployFixture();
             const amountToWithdraw = 10;
+            const rewardAmount = 50000;
+            const amountToDeposit = ethers.parseUnits("170", 18);
 
-            await aToken.approve(autoCompounder.target, 100);
-            await share.approve(autoCompounder.target, 1000);
+            await stakingToken.approve(autoCompounder.target, amountToDeposit);
+
+            await autoCompounder.deposit(
+                amountToDeposit,
+                owner.address,
+                { from: owner.address, gasLimit: 3000000 }
+            );
+
+            // Add reward to the Vault
+            await rewardToken.approve(basicVault.target, rewardAmount);
+            await basicVault.addReward(rewardToken.target, rewardAmount);
+
+            await autoCompounder.approve(autoCompounder.target, 100);
+            await basicVault.approve(autoCompounder.target, 1000);
 
             const tx = await autoCompounder.withdraw(
                 amountToWithdraw,
-                { gasLimit: 3000000 }
+                owner.address,
+                { from: owner.address, gasLimit: 3000000 }
             );
 
             console.log(tx.hash);
@@ -151,34 +178,79 @@ describe("AutoCompounder", function () {
             const { autoCompounder } = await deployFixture();
             const amountToWithdraw = 0;
 
-            const tx = await autoCompounder.withdraw(
-                amountToWithdraw,
-                { gasLimit: 3000000 }
-            );
-
-            console.log(tx.hash);
-
             await expect(
-                tx
+                autoCompounder.withdraw(
+                    amountToWithdraw,
+                    autoCompounder.target
+                )
             ).to.be.revertedWith("AutoCompounder: Invalid aToken amount");
         });
     });
 
     describe("claim", function () {
         it("Should claim reward and reinvest", async function () {
-            const { autoCompounder } = await deployFixture();
-            const amountToWithdraw = 10;
+            const { autoCompounder, basicVault, stakingToken, rewardToken, owner } = await deployFixture();
+            const amountToDeposit = 112412;
+            const rewardAmount = ethers.parseUnits("5000000", 18);
 
-            const tx = await autoCompounder.claim(
+            const uniswapRouter = await ethers.getContractAt(
+                "contracts/erc4626/interfaces/IUniswapV2Router02.sol:IUniswapV2Router02",
+                uniswapRouterAddress
+            );
+            const uniswapFactory = await ethers.getContractAt("IUniswapV2Factory", uniswapFactoryAddress);
+
+            const latestBlock = await ethers.provider.getBlock("latest");
+            const timestamp = latestBlock?.timestamp;
+
+            // Create Pair
+            await uniswapFactory.createPair(
+                rewardToken.target,
+                stakingToken.target,
                 { gasLimit: 3000000 }
             );
 
-            console.log(tx.hash);
+            // Add Liquidity
+            await rewardToken.approve(uniswapRouter, ethers.parseUnits("5000000", 18));
+            await stakingToken.approve(uniswapRouter, ethers.parseUnits("5000000", 18));
+
+            const addLiquidityTx = await uniswapRouter.addLiquidity(
+                rewardToken.target,
+                stakingToken.target,
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                owner.address,
+                timestamp! + 100
+            );
+
+            console.log("Add Liquidity Tx: ", addLiquidityTx.hash);
+
+            // Deposit
+            await stakingToken.approve(autoCompounder.target, amountToDeposit);
+            await autoCompounder.deposit(
+                amountToDeposit,
+                owner.address,
+                { from: owner.address, gasLimit: 3000000 }
+            );
+
+            // Add reward to the Vault
+            await rewardToken.approve(basicVault.target, rewardAmount);
+            await basicVault.addReward(rewardToken.target, rewardAmount);
+
+            console.log("Shares: ", await basicVault.balanceOf(autoCompounder.target));
+            console.log("Reward: ", await basicVault.getUserReward(autoCompounder.target, rewardToken.target));
+
+            // Claim and reinvest
+            const tx = await autoCompounder.claim(
+                { from: owner.address, gasLimit: 3000000 }
+            );
+
+            console.log("Claim Tx", tx.hash);
 
             await expect(
                 tx
-            ).to.emit(autoCompounder, "Claim")
-                .withArgs(anyValue);
+            ).to.emit(autoCompounder, "Claim");
         });
     });
 });

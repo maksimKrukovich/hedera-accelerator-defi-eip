@@ -82,11 +82,19 @@ abstract contract IERC4626 is ERC20 {
      * @param _startPosition The starting index in the reward token list from which to begin claiming rewards.
      * @return The index of the start position after the last claimed reward and the total number of reward tokens.
      */
-    function claimAllReward(uint256 _startPosition) external payable virtual returns (uint256, uint256);
+    function claimAllReward(
+        uint256 _startPosition,
+        address receiver
+    ) external payable virtual returns (uint256, uint256);
 
     /*///////////////////////////////////////////////////////////////
                             View Functions
     //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Returns the exchange rate: share / underlying.
+     */
+    function exchangeRate() external view virtual returns (uint256);
 
     /**
      * @dev Returns rewards for a user with fee considering.
