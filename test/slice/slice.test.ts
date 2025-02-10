@@ -6,7 +6,6 @@ import { VaultToken, Slice, BasicVault, AutoCompounder } from "../../typechain-t
 import {
     usdcAddress,
     uniswapRouterAddress,
-    uniswapFactoryAddress,
     pythOracleAddress,
     pythUtilsAddress
 } from "../../constants";
@@ -58,6 +57,12 @@ const priceIds = [
     "0x2222222222222222222222222222222222222222222222222222222222222222",
 ];
 
+const groupName = "Stadiums";
+const sTokenPayload = "sToken";
+
+const group = ethers.zeroPadBytes(ethers.toUtf8Bytes(groupName), 32);
+const description = ethers.zeroPadBytes(ethers.toUtf8Bytes(sTokenPayload), 32)
+
 // Zero fee
 const feeConfig = {
     receiver: ZeroAddress,
@@ -84,30 +89,25 @@ describe("Slice", function () {
 
         // Staking Token
         const VaultToken = await ethers.getContractFactory("VaultToken");
-        const stakingToken = await VaultToken.deploy(
+
+        const stakingToken1 = await VaultToken.deploy(
         ) as VaultToken;
-        await stakingToken.waitForDeployment();
+        await stakingToken1.waitForDeployment();
+
+        const stakingToken2 = await VaultToken.deploy(
+        ) as VaultToken;
+        await stakingToken2.waitForDeployment();
 
         // Reward Token
-        const RewardToken = await ethers.getContractFactory("VaultToken");
-        const rewardToken = await RewardToken.deploy(
+        const rewardToken = await VaultToken.deploy(
         ) as VaultToken;
         await rewardToken.waitForDeployment();
 
         // Basic Vault
         const Vault = await ethers.getContractFactory("BasicVault");
-        const vault = await Vault.deploy(
-            stakingToken,
-            "TST",
-            "TST",
-            feeConfig,
-            owner.address,
-            owner.address
-        ) as BasicVault;
-        await vault.waitForDeployment();
 
         const vault1 = await Vault.deploy(
-            stakingToken.target,
+            stakingToken1,
             "TST",
             "TST",
             feeConfig,
@@ -116,16 +116,18 @@ describe("Slice", function () {
         ) as BasicVault;
         await vault1.waitForDeployment();
 
+        const vault2 = await Vault.deploy(
+            stakingToken2.target,
+            "TST",
+            "TST",
+            feeConfig,
+            owner.address,
+            owner.address
+        ) as BasicVault;
+        await vault2.waitForDeployment();
+
         // AutoCompounder
         const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
-        const autoCompounder = await AutoCompounder.deploy(
-            uniswapRouterAddress,
-            vault.target,
-            usdcAddress,
-            "TST",
-            "TST"
-        ) as AutoCompounder;
-        await autoCompounder.waitForDeployment();
 
         const autoCompounder1 = await AutoCompounder.deploy(
             uniswapRouterAddress,
@@ -136,6 +138,15 @@ describe("Slice", function () {
         ) as AutoCompounder;
         await autoCompounder1.waitForDeployment();
 
+        const autoCompounder2 = await AutoCompounder.deploy(
+            uniswapRouterAddress,
+            vault2.target,
+            rewardToken.target,
+            "TST",
+            "TST"
+        ) as AutoCompounder;
+        await autoCompounder2.waitForDeployment();
+
         // await stakingToken.mint(testAccount.address, ethers.parseUnits("500000000", 18));
 
         // Slice
@@ -145,40 +156,42 @@ describe("Slice", function () {
             },
         });
         const slice = await Slice.deploy(
-            uniswapRouterAddress, // Uniswap 
-            pythOracleAddress, // Oracle
-            rewardToken.target, // BaseToken TODO: Change to real USDC
-            "sToken",
-            "sToken",
-            18
+            uniswapRouterAddress,   // Uniswap router V2
+            pythOracleAddress,      // Price oracle
+            rewardToken.target,     // BaseToken TODO: Change to real USDC
+            sTokenPayload,          // sToken name
+            sTokenPayload,          // sToken symbol
+            group,                  // Slice group
+            description,            // Slice description
+            18                      // sToken decimals
         ) as Slice;
         await slice.waitForDeployment();
 
         return {
             slice,
-            vault,
             vault1,
-            autoCompounder,
+            vault2,
             autoCompounder1,
-            stakingToken,
+            autoCompounder2,
+            stakingToken1,
+            stakingToken2,
             rewardToken,
             client,
             owner,
         };
     }
 
-    describe.only("rebalance", function () {
+    describe("rebalance", function () {
         it("Should distribute tokens close to the provided allocation Autocompounders", async function () {
             const {
                 slice,
                 owner,
-                vault,
                 vault1,
-                autoCompounder,
+                vault2,
                 autoCompounder1,
-                // uniswapV2Router02,
-                // uniswapV2Factory,
-                stakingToken,
+                autoCompounder2,
+                stakingToken1,
+                stakingToken2,
                 rewardToken,
             } = await deployFixture();
             const allocationPercentage1 = 4000;
@@ -186,44 +199,39 @@ describe("Slice", function () {
             const amountToDeposit = ethers.parseUnits("50", 12);
             const rewardAmount = ethers.parseUnits("50000000", 18);
 
-            const latestBlock = await ethers.provider.getBlock("latest");
-            const timestamp = latestBlock?.timestamp;
-
-            const uniswapV2Factory = await ethers.getContractAt("contracts/erc4626/interfaces/IUniswapV2Factory.sol:IUniswapV2Factory", uniswapFactoryAddress);
             const uniswapV2Router02 = await ethers.getContractAt("contracts/erc4626/interfaces/IUniswapV2Router02.sol:IUniswapV2Router02", uniswapRouterAddress);
 
-            // Create Pair
-            const txpr = await uniswapV2Factory.createPair(
-                rewardToken.target,
-                stakingToken.target,
-                { value: ethers.parseUnits("50", 18), gasLimit: 3000000 }
-            );
-
-            console.log(txpr.hash);
-
-            const pair = await uniswapV2Factory.getPair(
-                rewardToken.target,
-                stakingToken.target
-            );
-
-            console.log("Pair: ", pair);
-
             // Add Liquidity
-            await rewardToken.approve(uniswapV2Router02.target, ethers.parseUnits("50000000", 18));
-            await stakingToken.approve(uniswapV2Router02.target, ethers.parseUnits("50000000", 18));
+            await rewardToken.approve(uniswapRouterAddress, ethers.parseUnits("50000000", 18));
+            await stakingToken1.approve(uniswapRouterAddress, ethers.parseUnits("50000000", 18));
+            await stakingToken2.approve(uniswapRouterAddress, ethers.parseUnits("50000000", 18));
 
-            const addLiquidityTx = await uniswapV2Router02.addLiquidity(
+            const addLiquidityTx1 = await uniswapV2Router02.addLiquidity(
                 rewardToken.target,
-                stakingToken.target,
+                stakingToken1.target,
                 ethers.parseUnits("5000000", 18),
                 ethers.parseUnits("5000000", 18),
                 ethers.parseUnits("5000000", 18),
                 ethers.parseUnits("5000000", 18),
                 owner.address,
-                timestamp! + 100
+                ethers.MaxUint256,
+                { from: owner.address, gasLimit: 3000000 }
             );
 
-            console.log("Add Liquidity Tx: ", addLiquidityTx.hash);
+            const addLiquidityTx2 = await uniswapV2Router02.addLiquidity(
+                rewardToken.target,
+                stakingToken2.target,
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                owner.address,
+                ethers.MaxUint256,
+                { from: owner.address, gasLimit: 3000000 }
+            );
+
+            console.log("Add Liquidity Tx1: ", addLiquidityTx1.hash);
+            console.log("Add Liquidity Tx2: ", addLiquidityTx2.hash);
 
             // Add tracking tokens
             await slice.addAllocation(
@@ -232,7 +240,7 @@ describe("Slice", function () {
                 allocationPercentage1
             );
             await slice.addAllocation(
-                autoCompounder.target,
+                autoCompounder2.target,
                 priceIds[1],
                 allocationPercentage2
             );
@@ -240,50 +248,178 @@ describe("Slice", function () {
             console.log("Tracking tokens added");
 
             // Deposit to Slice
-            await stakingToken.approve(slice.target, amountToDeposit + amountToDeposit);
+            await stakingToken1.approve(slice.target, amountToDeposit);
+            await stakingToken2.approve(slice.target, amountToDeposit);
 
-            const depositAutoCompounderTx = await slice.deposit(autoCompounder1.target, amountToDeposit);
-            console.log("Deposit to Vault Tx: ", depositAutoCompounderTx.hash);
-            const depositAutoCompounder1Tx = await slice.deposit(autoCompounder.target, amountToDeposit);
-            console.log("Deposit to AutoCompounder Tx: ", depositAutoCompounder1Tx.hash);
-
-            // console.log("aToken balance before: ", await autoCompounder.balanceOf(balancer.address));
-            // console.log("vToken balance before: ", await vault.balanceOf(balancer.address));
+            const depositAutoCompounderTx1 = await slice.deposit(autoCompounder1.target, amountToDeposit);
+            console.log("Deposit to AutoCompounder Tx1: ", depositAutoCompounderTx1.hash);
+            const depositAutoCompounderTx2 = await slice.deposit(autoCompounder2.target, amountToDeposit);
+            console.log("Deposit to AutoCompounder Tx2: ", depositAutoCompounderTx2.hash);
 
             // Add reward
-            await rewardToken.approve(vault.target, rewardAmount);
             await rewardToken.approve(vault1.target, rewardAmount);
+            await rewardToken.approve(vault2.target, rewardAmount);
 
-            const addRewardTx = await vault.addReward(rewardToken.target, rewardAmount);
-            const addReward1Tx = await vault1.addReward(rewardToken.target, rewardAmount);
-            console.log(addRewardTx.hash);
-            console.log(addReward1Tx.hash);
+            const addRewardTx1 = await vault1.addReward(rewardToken.target, rewardAmount);
+            const addRewardTx2 = await vault2.addReward(rewardToken.target, rewardAmount);
+            console.log(addRewardTx1.hash);
+            console.log(addRewardTx2.hash);
 
-            console.log("aToken balance before: ", await autoCompounder.balanceOf(slice.target));
             console.log("aToken1 balance before: ", await autoCompounder1.balanceOf(slice.target));
-            console.log("vToken balance before: ", await vault.balanceOf(slice.target));
+            console.log("aToken2 balance before: ", await autoCompounder2.balanceOf(slice.target));
             console.log("vToken1 balance before: ", await vault1.balanceOf(slice.target));
+            console.log("vToken2 balance before: ", await vault2.balanceOf(slice.target));
             console.log("USDC balance before: ", await rewardToken.balanceOf(slice.target));
-            console.log("Underlying balance before: ", await stakingToken.balanceOf(slice.target));
+            console.log("Underlying1 balance before: ", await stakingToken1.balanceOf(slice.target));
+            console.log("Underlying2 balance before: ", await stakingToken2.balanceOf(slice.target));
 
             const tx = await slice.rebalance();
 
             console.log(`Rebalance tx: ${tx.hash}`);
 
-            console.log("aToken balance after: ", await autoCompounder.balanceOf(slice.target));
             console.log("aToken1 balance after: ", await autoCompounder1.balanceOf(slice.target));
-            console.log("vToken balance after: ", await vault.balanceOf(slice.target));
+            console.log("aToken2 balance after: ", await autoCompounder2.balanceOf(slice.target));
             console.log("vToken1 balance after: ", await vault1.balanceOf(slice.target));
+            console.log("vToken2 balance after: ", await vault2.balanceOf(slice.target));
             console.log("USDC balance after: ", await rewardToken.balanceOf(slice.target));
-            console.log("Underlying balance after: ", await stakingToken.balanceOf(slice.target));
+            console.log("Underlying1 balance after: ", await stakingToken1.balanceOf(slice.target));
+            console.log("Underlying2 balance after: ", await stakingToken2.balanceOf(slice.target));
+        });
+    });
+
+    describe("deposit", function () {
+        it("Should deposit to AutoCompounder and get aToken", async function () {
+            const {
+                slice,
+                owner,
+                autoCompounder1,
+                vault1,
+                stakingToken1,
+            } = await deployFixture();
+            const allocationPercentage1 = 4000;
+            const amountToDeposit = ethers.parseUnits("50", 12);
+
+            // Add tracking tokens
+            await slice.addAllocation(
+                autoCompounder1.target,
+                priceIds[0],
+                allocationPercentage1
+            );
+
+            console.log("Tracking tokens added");
+
+            // Deposit to Slice
+            await stakingToken1.approve(slice.target, amountToDeposit);
+            const depositAutoCompounderTx1 = await slice.deposit(autoCompounder1.target, amountToDeposit);
+
+            await expect(
+                depositAutoCompounderTx1
+            ).to.emit(slice, "Deposit")
+                .withArgs(autoCompounder1, owner.address, amountToDeposit);
+
+            const exchangeRate = await autoCompounder1.exchangeRate(vault1.target);
+
+            // Check user received sTokens
+            await expect(
+                depositAutoCompounderTx1
+            ).to.changeTokenBalance(slice, owner.address, amountToDeposit / exchangeRate);
+        });
+
+        it("Should revert if invalid amount to deposit", async function () {
+            const {
+                slice,
+                autoCompounder1,
+            } = await deployFixture();
+            const amountToDeposit = 0;
+
+            await expect(
+                slice.deposit(autoCompounder1.target, amountToDeposit)
+            ).to.be.revertedWith("Slice: Invalid amount");
+        });
+
+        it("Should revert if allocation for the deposited token doesn't exist", async function () {
+            const {
+                slice,
+            } = await deployFixture();
+            const amountToDeposit = ethers.parseUnits("50", 12);
+
+            await expect(
+                slice.deposit(ZeroAddress, amountToDeposit)
+            ).to.be.revertedWith("Slice: Allocation for the token doesn't exist");
+        });
+    });
+
+    describe("withdraw", function () {
+        it.only("Should withdraw", async function () {
+            const {
+                slice,
+                owner,
+                autoCompounder1,
+                stakingToken1,
+            } = await deployFixture();
+            const allocationPercentage1 = 4000;
+            const amountToDeposit = ethers.parseUnits("50", 12);
+            const amountToWithdraw = ethers.parseUnits("25", 12);
+
+            // Add tracking tokens
+            await slice.addAllocation(
+                autoCompounder1.target,
+                priceIds[0],
+                allocationPercentage1
+            );
+
+            // Deposit to Slice
+            await stakingToken1.approve(slice.target, amountToDeposit);
+            await slice.deposit(autoCompounder1.target, amountToDeposit);
+
+            const tx = await slice.withdraw(amountToWithdraw);
+
+            console.log(tx.hash);
+
+            const share = amountToWithdraw / await slice.totalSupply();
+
+            await expect(
+                tx
+            ).to.emit(slice, "Withdraw")
+                .withArgs(
+                    autoCompounder1.target,
+                    owner.address,
+                    amountToDeposit * share
+                );
+        });
+
+        it("Should revert if invalid amount to withdraw", async function () {
+            const {
+                slice,
+                autoCompounder1,
+                stakingToken1,
+            } = await deployFixture();
+            const allocationPercentage1 = 4000;
+            const amountToDeposit = ethers.parseUnits("50", 12);
+            const amountToWithdraw = 0;
+
+            // Add tracking tokens
+            await slice.addAllocation(
+                autoCompounder1.target,
+                priceIds[0],
+                allocationPercentage1
+            );
+
+            // Deposit to Slice
+            await stakingToken1.approve(slice.target, amountToDeposit);
+            await slice.deposit(autoCompounder1.target, amountToDeposit);
+
+            await expect(
+                slice.withdraw(amountToWithdraw)
+            ).to.be.revertedWith("Slice: Invalid amount");
         });
     });
 
     describe("addAllocation", function () {
         it("Should add token allocation", async function () {
-            const { slice, owner, vault } = await deployFixture();
+            const { slice, owner, vault1 } = await deployFixture();
             const allocationPercentage = 4000;
-            const token = await vault.share();
+            const token = await vault1.share();
 
             const tx = await slice.addAllocation(
                 token,
@@ -314,12 +450,12 @@ describe("Slice", function () {
         });
 
         it("Should revert if invalid price id", async function () {
-            const { slice, autoCompounder } = await deployFixture();
+            const { slice, autoCompounder1 } = await deployFixture();
             const allocationPercentage = 4000;
 
             await expect(
                 slice.addAllocation(
-                    autoCompounder.target,
+                    autoCompounder1.target,
                     ZeroHash,
                     allocationPercentage,
                 )
@@ -327,12 +463,12 @@ describe("Slice", function () {
         });
 
         it("Should revert if invalid percentage", async function () {
-            const { slice, autoCompounder } = await deployFixture();
+            const { slice, autoCompounder1 } = await deployFixture();
             const allocationPercentage = 0;
 
             await expect(
                 slice.addAllocation(
-                    autoCompounder.target,
+                    autoCompounder1.target,
                     priceIds[0],
                     allocationPercentage,
                 )
@@ -340,11 +476,11 @@ describe("Slice", function () {
         });
 
         it("Should revert if token already added", async function () {
-            const { slice, owner, autoCompounder } = await deployFixture();
+            const { slice, owner, autoCompounder1 } = await deployFixture();
             const allocationPercentage = 4000;
 
             const tx = await slice.addAllocation(
-                autoCompounder.target,
+                autoCompounder1.target,
                 priceIds[0],
                 allocationPercentage,
                 { from: owner.address, gasLimit: 3000000 }
@@ -352,7 +488,7 @@ describe("Slice", function () {
 
             await expect(
                 slice.addAllocation(
-                    autoCompounder.target,
+                    autoCompounder1.target,
                     priceIds[0],
                     allocationPercentage,
                 )
@@ -362,12 +498,12 @@ describe("Slice", function () {
 
     describe("setAllocationPercentage", function () {
         it("Should change allocation percentage", async function () {
-            const { slice, owner, autoCompounder } = await deployFixture();
+            const { slice, owner, autoCompounder1 } = await deployFixture();
             const allocationPercentage = 4000;
             const newAllocationPercentage = 5000;
 
             const tx = await slice.addAllocation(
-                autoCompounder.target,
+                autoCompounder1.target,
                 priceIds[0],
                 allocationPercentage,
                 { from: owner.address, gasLimit: 3000000 }
@@ -380,35 +516,35 @@ describe("Slice", function () {
             ).to.emit(slice, "AllocationAdded");
 
             const setAllocationTx = await slice.setAllocationPercentage(
-                autoCompounder.target,
+                autoCompounder1.target,
                 newAllocationPercentage
             );
 
             await expect(
                 setAllocationTx
             ).to.emit(slice, "AllocationPercentageChanged")
-                .withArgs(autoCompounder.target, newAllocationPercentage);
+                .withArgs(autoCompounder1.target, newAllocationPercentage);
         });
 
         it("Should revert if token doesn't exist", async function () {
-            const { slice, autoCompounder } = await deployFixture();
+            const { slice, autoCompounder1 } = await deployFixture();
             const allocationPercentage = 4000;
 
             await expect(
                 slice.setAllocationPercentage(
-                    autoCompounder.target,
+                    autoCompounder1.target,
                     allocationPercentage,
                 )
             ).to.be.revertedWith("Slice: Allocation for the passed token doesn't exist");
         });
 
         it("Should revert if invalid percentage", async function () {
-            const { slice, autoCompounder } = await deployFixture();
+            const { slice, autoCompounder1 } = await deployFixture();
             const allocationPercentage = 0;
 
             await expect(
                 slice.setAllocationPercentage(
-                    autoCompounder.target,
+                    autoCompounder1.target,
                     allocationPercentage,
                 )
             ).to.be.revertedWith("Slice: Invalid percentage");

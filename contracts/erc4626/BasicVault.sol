@@ -94,10 +94,6 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         _asset = _underlying;
     }
 
-    /*///////////////////////////////////////////////////////////////
-                        DEPOSIT/WITHDRAWAL LOGIC
-    //////////////////////////////////////////////////////////////*/
-
     /**
      * @dev Deposits staking token to the Vault and returns shares.
      *
@@ -477,8 +473,8 @@ contract BasicVault is IERC4626, FeeConfiguration, Ownable, ReentrancyGuard {
         uint256 perShareUnclaimedAmount = perShareAmount - perShareClaimedAmount;
 
         // Add precision to consider small rewards
-        unclaimedAmount = (perShareUnclaimedAmount * 1e36) / userStakingTokenTotal;
-        unclaimedAmount = unclaimedAmount / 1e18;
+        unclaimedAmount = (perShareUnclaimedAmount * decimals) / userStakingTokenTotal;
+        unclaimedAmount = unclaimedAmount / decimals;
 
         if (feeConfig.feePercentage > 0) {
             uint256 currentFee = _calculateFee(unclaimedAmount, feeConfig.feePercentage);

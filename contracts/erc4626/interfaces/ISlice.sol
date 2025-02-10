@@ -49,6 +49,28 @@ interface ISlice {
     }
 
     /**
+     * @dev Makes set of swaps to reach target balances of aTokens from generated payloads.
+     */
+    function rebalance() external;
+
+    /**
+     * @dev Deposits to the AutoCompounder contract.
+     *
+     * @param aToken The address of the AutoCompounder.
+     * @param amount The aToken amount to deposit.
+     * @return aTokenAmount The amount of deposited aToken and minted sToken.
+     */
+    function deposit(address aToken, uint256 amount) external returns (uint256 aTokenAmount);
+
+    /**
+     * @dev Withdraws set of stored tokens.
+     *
+     * @param sTokenAmount The sToken amount to withdraw.
+     * @return amounts The array of withdrawn aToken amounts.
+     */
+    function withdraw(uint256 sTokenAmount) external returns (uint256[] memory amounts);
+
+    /**
      * @dev Add token to the system.
      *
      * @param aToken The aToken address.
@@ -64,4 +86,11 @@ interface ISlice {
      * @param percentage The new allocation percentage to maintain.
      */
     function setAllocationPercentage(address aToken, uint256 percentage) external;
+
+    /**
+     * @dev Returns token allocation for the passed aToken address.
+     *
+     * @param aToken The aToken address.
+     */
+    function getTokenAllocation(address aToken) external view returns (Allocation memory);
 }

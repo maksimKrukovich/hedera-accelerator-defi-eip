@@ -42,11 +42,4 @@ interface IVaultFactory {
         VaultDetails calldata vaultDetails,
         FeeConfiguration.FeeConfig calldata feeConfig
     ) external payable returns (address vault);
-
-    /**
-     * @dev Checks if Vault is available.
-     *
-     * @return The bool flag of vault's availability.
-     */
-    function isVaultAvailable(address vault) external view returns (bool);
 }

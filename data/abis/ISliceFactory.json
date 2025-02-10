@@ -57,6 +57,31 @@
               "internalType": "address",
               "name": "usdc",
               "type": "address"
+            },
+            {
+              "internalType": "string",
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "symbol",
+              "type": "string"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "group",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "description",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint8",
+              "name": "decimals",
+              "type": "uint8"
             }
           ],
           "internalType": "struct ISliceFactory.SliceDetails",
@@ -73,6 +98,25 @@
         }
       ],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "group",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getSlicesByGroup",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "",
+          "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     }
   ],
