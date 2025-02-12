@@ -1,12 +1,13 @@
 import { ethers } from "hardhat";
 import * as dotenv from "dotenv";
-import { Client, AccountId, PrivateKey, ContractCallQuery, ContractFunctionParameters } from "@hashgraph/sdk";
-import { Contract } from "ethers";
+import { Client, AccountId, PrivateKey } from "@hashgraph/sdk";
 import abi from "@pythnetwork/pyth-sdk-solidity/abis/MockPyth.json";
 
-dotenv.config();
+import {
+    pythOracleAddress
+} from "../constants";
 
-const mockPyth = "0x330C40b17607572cf113973b8748fD1aEd742943";
+dotenv.config();
 
 async function createPriceFeedData(
     id: any,
@@ -78,7 +79,7 @@ async function main() {
         1698672000
     );
 
-    const pyth = await ethers.getContractAt(abi, mockPyth);
+    const pyth = await ethers.getContractAt(abi, pythOracleAddress);
     const tx = await pyth.updatePriceFeeds([priceFeed]);
 
     console.log(tx.hash);

@@ -28,7 +28,7 @@ abstract contract ERC20 {
                               ERC20 STORAGE
     //////////////////////////////////////////////////////////////*/
 
-    uint256 public totalSupply;
+    uint256 private _totalSupply;
 
     mapping(address => uint256) public balanceOf;
 
@@ -173,7 +173,7 @@ abstract contract ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     function _mint(address to, uint256 amount) internal virtual {
-        totalSupply += amount;
+        _totalSupply += amount;
 
         // Cannot overflow because the sum of all user
         // balances can't exceed the max uint256 value.
@@ -190,9 +190,13 @@ abstract contract ERC20 {
         // Cannot underflow because a user's balance
         // will never be larger than the total supply.
         unchecked {
-            totalSupply -= amount;
+            _totalSupply -= amount;
         }
 
         emit Transfer(from, address(0), amount);
+    }
+
+    function totalSupply() public view returns (uint256) {
+        return _totalSupply;
     }
 }

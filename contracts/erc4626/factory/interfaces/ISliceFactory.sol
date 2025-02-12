@@ -21,9 +21,14 @@ interface ISliceFactory {
 
     // Slice details struct
     struct SliceDetails {
-        address pyth;
-        address uniswapRouter;
-        address usdc;
+        address pyth; // Price oracle address
+        address uniswapRouter; // Uniswap router V2 address
+        address usdc; // USDC token address
+        string name; // sToken name
+        string symbol; // sToken symbol
+        bytes32 group; // Slice group
+        bytes32 description; // Slice description
+        uint8 decimals; // sToken decimals
     }
 
     /**
@@ -34,4 +39,12 @@ interface ISliceFactory {
      * @return slice The address of the deployed Slice.
      */
     function deploySlice(string memory salt, SliceDetails calldata sliceDetails) external returns (address slice);
+
+    /**
+     * @dev Returns set of Slices with provided group.
+     *
+     * @param group The target group.
+     * @return The addresses of found slices.
+     */
+    function getSlicesByGroup(bytes32 group) external view returns (address[] memory);
 }

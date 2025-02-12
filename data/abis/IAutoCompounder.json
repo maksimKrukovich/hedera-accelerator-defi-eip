@@ -110,6 +110,11 @@
           "internalType": "uint256",
           "name": "assets",
           "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "receiver",
+          "type": "address"
         }
       ],
       "name": "deposit",
@@ -124,12 +129,18 @@
       "type": "function"
     },
     {
-      "inputs": [],
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        }
+      ],
       "name": "exchangeRate",
       "outputs": [
         {
           "internalType": "uint256",
-          "name": "",
+          "name": "exchangeRate",
           "type": "uint256"
         }
       ],
@@ -142,6 +153,11 @@
           "internalType": "uint256",
           "name": "aTokenAmount",
           "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "receiver",
+          "type": "address"
         }
       ],
       "name": "withdraw",

@@ -84,6 +84,10 @@ node_modules
 /typechain
 /typechain-types
 
+# Foundry files
+lib/
+out/
+
 # solidity-coverage files
 /coverage
 /coverage.json

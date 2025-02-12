@@ -302,7 +302,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
 
         if (rewardTokens.length == 10) revert MaxRewardTokensAmount();
 
-        uint256 perShareRewards = _amount.mulDivDown(totalSupply + 1, totalAssets() + 1);
+        uint256 perShareRewards = _amount.mulDivDown(totalSupply() + 1, totalAssets() + 1);
         RewardsInfo storage rewardInfo = tokensRewardInfo[_token];
         if (!rewardInfo.exist) {
             rewardTokens.push(_token);
@@ -452,7 +452,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      * @return The amount of shares.
      */
     function _convertToShares(uint256 assets) internal view returns (uint256) {
-        return totalSupply == 0 ? assets : assets.mulDivDown(1, totalAssets());
+        return totalSupply() == 0 ? assets : assets.mulDivDown(1, totalAssets());
     }
 
     /**
@@ -462,7 +462,7 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      * @return The amount of shares.
      */
     function _convertToAssets(uint256 shares) internal view returns (uint256) {
-        return shares.mulDivDown(totalAssets() + 1, totalSupply + 1);
+        return shares.mulDivDown(totalAssets() + 1, totalSupply() + 1);
     }
 
     /**

@@ -16,9 +16,6 @@ import {IOwnable} from "./interfaces/IOwnable.sol";
  * and track contract addresses.
  */
 contract VaultFactory is Ownable, IVaultFactory, ERC165 {
-    // Available Vaults
-    mapping(address vault => bool) public availableVaults;
-
     // Used salt => deployed Vault
     mapping(string => address) public vaultDeployed;
 
@@ -48,7 +45,7 @@ contract VaultFactory is Ownable, IVaultFactory, ERC165 {
 
         vault = _deployVault(salt, vaultDetails, feeConfig);
 
-        availableVaults[vault] = true;
+        vaultDeployed[salt] = vault;
 
         IOwnable(vault).transferOwnership(msg.sender);
 
@@ -99,15 +96,6 @@ contract VaultFactory is Ownable, IVaultFactory, ERC165 {
             }
         }
         return addr;
-    }
-
-    /**
-     * @dev Checks if Vault is available.
-     *
-     * @return The bool flag of vault's availability.
-     */
-    function isVaultAvailable(address vault) external view returns (bool) {
-        return availableVaults[vault];
     }
 
     /**

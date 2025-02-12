@@ -44,33 +44,38 @@ interface IAutoCompounder {
     error ZeroReward();
 
     /**
-     * @dev Returns the exchange rate: aToken / vToken.
-     */
-    function exchangeRate() external view returns (uint256);
-
-    /**
-     * @dev Returns underlying asset address.
-     */
-    function asset() external view returns (address);
-
-    /**
      * @dev Deposits staking token to the Vault and returns shares.
      *
      * @param assets The amount of staking token to send.
+     * @param receiver The shares receiver address.
      * @return amountToMint The amount of aToken to receive.
      */
-    function deposit(uint256 assets) external returns (uint256 amountToMint);
+    function deposit(uint256 assets, address receiver) external returns (uint256 amountToMint);
 
     /**
      * @dev Withdraws underlying asset from the Vault.
      *
      * @param aTokenAmount The amount of aToken to send.
+     * @param receiver The underlying receiver address.
      * @return underlyingAmount The amount of aToken to receive.
      */
-    function withdraw(uint256 aTokenAmount) external returns (uint256 underlyingAmount);
+    function withdraw(uint256 aTokenAmount, address receiver) external returns (uint256 underlyingAmount);
 
     /**
      * @dev Claims reward from the Vault, swap to underlying and deposit back.
      */
     function claim() external;
+
+    /**
+     * @dev Returns the exchange rate for token.
+     *
+     * @param token The token to get exchange rate for.
+     * @return exchangeRate The calculated exchange rate.
+     */
+    function exchangeRate(address token) external view returns (uint256 exchangeRate);
+
+    /**
+     * @dev Returns underlying asset address.
+     */
+    function asset() external view returns (address);
 }
