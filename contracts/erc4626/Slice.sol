@@ -160,7 +160,7 @@ contract Slice is ISlice, ERC20, Ownable, ERC165 {
      */
     function addAllocation(address aToken, address priceFeed, uint16 percentage) external {
         require(aToken != address(0), "Slice: Invalid aToken address");
-        require(priceFeed != address(0), "Slice: Invalid priceFeed address");
+        require(priceFeed != address(0), "Slice: Invalid price feed address");
         require(percentage != 0 && percentage != BASIS_POINTS, "Slice: Invalid allocation percentage");
         require(getTokenAllocation(aToken).aToken == address(0), "Slice: Allocation for the passed token exists");
         require(_allocations.length < MAX_TOKENS_AMOUNT, "Slice: Allocation limit exceeds");

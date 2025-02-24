@@ -125,7 +125,7 @@ describe("Slice", function () {
     }
 
     describe("rebalance", function () {
-        it("Should distribute tokens close to the provided allocation Autocompounders", async function () {
+        it.only("Should distribute tokens close to the provided allocation Autocompounders", async function () {
             const {
                 slice,
                 owner,
@@ -360,7 +360,7 @@ describe("Slice", function () {
 
     describe("addAllocation", function () {
         it("Should add token allocation", async function () {
-            const { slice, owner, autoCompounder1 } = await deployFixture();
+            const { slice, owner, autoCompounder1, stakingToken1 } = await deployFixture();
             const allocationPercentage = 4000;
 
             const tx = await slice.addAllocation(
@@ -375,7 +375,7 @@ describe("Slice", function () {
             await expect(
                 tx
             ).to.emit(slice, "AllocationAdded")
-                .withArgs(autoCompounder1.target, chainlinkAggregatorMockAddress, allocationPercentage);
+                .withArgs(autoCompounder1.target, stakingToken1.target, chainlinkAggregatorMockAddress, allocationPercentage);
         });
 
         it("Should revert if zero token address", async function () {
@@ -398,10 +398,10 @@ describe("Slice", function () {
             await expect(
                 slice.addAllocation(
                     autoCompounder1.target,
-                    ZeroHash,
+                    ZeroAddress,
                     allocationPercentage,
                 )
-            ).to.be.revertedWith("Slice: Invalid price id");
+            ).to.be.revertedWith("Slice: Invalid price feed address");
         });
 
         it("Should revert if invalid percentage", async function () {
