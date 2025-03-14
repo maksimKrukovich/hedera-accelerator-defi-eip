@@ -1,7 +1,7 @@
 import { ethers, expect } from "../setup";
 import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
 import { ZeroAddress, ZeroHash } from "ethers";
-import { VaultToken, Slice, BasicVault, AutoCompounder } from "../../typechain-types";
+import { VaultToken, Slice, BasicVault, AsyncVault, AutoCompounder } from "../../typechain-types";
 
 import {
     usdcAddress,
@@ -66,15 +66,26 @@ describe("Slice", function () {
         ) as BasicVault;
         await vault1.waitForDeployment();
 
-        const vault2 = await Vault.deploy(
+        const AsyncVault = await ethers.getContractFactory("contracts/erc7540/AsyncVault.sol:AsyncVault");
+        const vault2 = await AsyncVault.deploy(
             stakingToken2.target,
             "TST",
             "TST",
             feeConfig,
             owner.address,
             owner.address
-        ) as BasicVault;
+        ) as AsyncVault;
         await vault2.waitForDeployment();
+
+        // const vault2 = await Vault.deploy(
+        //     stakingToken2.target,
+        //     "TST",
+        //     "TST",
+        //     feeConfig,
+        //     owner.address,
+        //     owner.address
+        // ) as BasicVault;
+        // await vault2.waitForDeployment();
 
         // AutoCompounder
         const AutoCompounder = await ethers.getContractFactory("AutoCompounder");

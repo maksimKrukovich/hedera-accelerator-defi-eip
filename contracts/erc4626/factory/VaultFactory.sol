@@ -2,12 +2,15 @@
 pragma solidity 0.8.24;
 
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IOwnable} from "./interfaces/IOwnable.sol";
 
 import {IVaultFactory} from "./interfaces/IVaultFactory.sol";
+
 import {BasicVault} from "../BasicVault.sol";
+import {AsyncVault} from "../../erc7540/AsyncVault.sol";
 import {FeeConfiguration} from "../../common/FeeConfiguration.sol";
-import {IOwnable} from "./interfaces/IOwnable.sol";
 
 /**
  * @title Vault Factory
@@ -36,14 +39,15 @@ contract VaultFactory is Ownable, IVaultFactory, ERC165 {
     function deployVault(
         string calldata salt,
         VaultDetails calldata vaultDetails,
-        FeeConfiguration.FeeConfig calldata feeConfig
+        FeeConfiguration.FeeConfig calldata feeConfig,
+        bool isAsync
     ) external payable returns (address vault) {
         require(vaultDeployed[salt] == address(0), "VaultFactory: Vault already deployed");
         require(vaultDetails.stakingToken != address(0), "VaultFactory: Invalid staking token");
         require(vaultDetails.vaultRewardController != address(0), "VaultFactory: Invalid reward controller address");
         require(vaultDetails.feeConfigController != address(0), "VaultFactory: Invalid fee controller address");
 
-        vault = _deployVault(salt, vaultDetails, feeConfig);
+        vault = _deployVault(salt, vaultDetails, feeConfig, isAsync);
 
         vaultDeployed[salt] = vault;
 
@@ -65,9 +69,12 @@ contract VaultFactory is Ownable, IVaultFactory, ERC165 {
     function _deployVault(
         string calldata salt,
         VaultDetails calldata vaultDetails,
-        FeeConfiguration.FeeConfig calldata feeConfig
+        FeeConfiguration.FeeConfig calldata feeConfig,
+        bool isAsync
     ) private returns (address) {
-        bytes memory _code = type(BasicVault).creationCode;
+        bytes memory _code;
+        isAsync ? _code = type(BasicVault).creationCode : _code = type(AsyncVault).creationCode;
+
         bytes memory _constructData = abi.encode(
             vaultDetails.stakingToken,
             vaultDetails.shareTokenName,

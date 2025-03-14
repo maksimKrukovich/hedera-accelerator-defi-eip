@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity 0.8.24;
 
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-
+/**
+ * @title IERC7540
+ * @author Hashgraph
+ */
 interface IERC7540 {
     /**
      * @notice Deposit Requested event.
@@ -27,13 +29,34 @@ interface IERC7540 {
     event RedeemRequested(address indexed controller, address indexed owner, address sender, uint256 shares);
 
     /**
+     * @notice The error is emitted when a user try to make a new deposit request
+     * and the deposited amount is grater than deposit limit.
+     */
+    error MaxDepositRequestExceeded(address controller, uint256 assets, uint256 maxDeposit);
+
+    /**
+     * @notice The error is emitted when a user try to make a new redeem request
+     * but there is lack of shares.
+     */
+    error MaxRedeemRequestExceeded(address controller, uint256 shares, uint256 maxShares);
+
+    /**
      * @dev Creates a new pending async deposit request.
      *
      * @param assets The amount of assets to deposit.
-     * @param operator The operator address.
+     * @param controller The controller address.
      * @param owner The owner address.
      */
-    function requestDeposit(uint256 assets, address operator, address owner) external;
+    function requestDeposit(uint256 assets, address controller, address owner) external;
+
+    /**
+     * @dev Creates a new pending async redeem request.
+     *
+     * @param shares The amount of shares to redeem.
+     * @param controller The controller address.
+     * @param owner The owner address.
+     */
+    function requestRedeem(uint256 shares, address controller, address owner) external;
 
     /**
      * @dev Returns the pending asset amount from the deposit request.
@@ -44,29 +67,10 @@ interface IERC7540 {
     function pendingDepositRequest(address owner) external view returns (uint256 assets);
 
     /**
-     * @dev Creates a new pending async redeem request.
-     *
-     * @param shares The amount of shares to redeem.
-     * @param operator The operator address.
-     * @param owner The owner address.
-     */
-    function requestRedeem(uint256 shares, address operator, address owner) external;
-
-    /**
      * @dev Returns the pending asset amount from the redeem request.
      *
      * @param owner The owner of the request.
      * @return shares The shares amount.
      */
     function pendingRedeemRequest(address owner) external view returns (uint256 shares);
-
-    /**
-     * @dev Returns Share token address.
-     */
-    function share() external view returns (address);
-
-    /**
-     * @dev Returns Asset token address.
-     */
-    function asset() external view returns (address);
 }

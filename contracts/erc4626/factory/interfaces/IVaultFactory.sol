@@ -36,11 +36,13 @@ interface IVaultFactory {
      * @param salt The CREATE2 salt.
      * @param vaultDetails The Vault parameters.
      * @param feeConfig The fee configuration setup for Vault.
+     * @param isAsync The bool flag, true if async vault deployment.
      * @return vault The address of the deployed Vault.
      */
     function deployVault(
         string memory salt,
         VaultDetails calldata vaultDetails,
-        FeeConfiguration.FeeConfig calldata feeConfig
+        FeeConfiguration.FeeConfig calldata feeConfig,
+        bool isAsync
     ) external payable returns (address vault);
 }

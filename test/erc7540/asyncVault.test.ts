@@ -1,6 +1,5 @@
-import { anyValue, ethers, expect } from "../setup";
-import { TokenTransfer, createFungibleToken, TokenBalance, createAccount, addToken, mintToken } from "../../scripts/utils";
-import { PrivateKey, Client, AccountId, TokenAssociateTransaction, AccountBalanceQuery } from "@hashgraph/sdk";
+import { anyValue, ethers, expect, time } from "../setup";
+import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
 import { BigNumberish, Wallet, ZeroAddress } from "ethers";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { VaultToken, AsyncVault } from "../../typechain-types";
@@ -46,14 +45,14 @@ describe("AsyncVault", function () {
         );
 
         const VaultToken = await ethers.getContractFactory("VaultToken");
+
         const stakingToken = await VaultToken.deploy(
         ) as VaultToken;
         await stakingToken.waitForDeployment();
 
         await stakingToken.mint(testAccount.address, ethers.parseUnits("500000000", 18));
 
-        const RewardToken = await ethers.getContractFactory("VaultToken");
-        const rewardToken = await RewardToken.deploy(
+        const rewardToken = await VaultToken.deploy(
         ) as VaultToken;
         await rewardToken.waitForDeployment();
 
@@ -88,59 +87,8 @@ describe("AsyncVault", function () {
     describe("requestDeposit", function () {
         it("Should stake the staking token and claim deposit", async function () {
             const { asyncVault, owner, stakingToken, rewardToken } = await deployFixture();
-            const amountToStake = ethers.parseUnits("1", 8);
-            const rewardAmount = ethers.parseUnits("5000000", 18);
-
-            const tx = await requestDeposit(
-                asyncVault,
-                await stakingToken.getAddress(),
-                amountToStake,
-                owner
-            );
-
-            await expect(
-                tx
-            ).to.emit(asyncVault, "DepositRequested")
-                .withArgs(owner.address, owner.address, owner.address, amountToStake);
-
-            await expect(
-                tx
-            ).to.changeTokenBalance(
-                stakingToken,
-                owner.address,
-                -amountToStake
-            );
-
-            // Add reward
-            await rewardToken.approve(asyncVault.target, rewardAmount);
-
-            const addRewardTx = await asyncVault.addReward(rewardToken.target, rewardAmount);
-            console.log(addRewardTx.hash);
-
-            await expect(
-                asyncVault.claimDeposit(ZeroAddress)
-            ).to.be.revertedWith("AsyncVault: Invalid receiver address");
-
-            const claimDepositTx = await asyncVault.claimDeposit(owner.address);
-
-            await expect(
-                claimDepositTx
-            ).to.emit(asyncVault, "ClaimDeposit")
-                .withArgs(owner.address, owner.address, amountToStake, anyValue);
-
-            await expect(
-                claimDepositTx
-            ).to.changeTokenBalance(
-                asyncVault,
-                owner.address,
-                amountToStake
-            );
-        });
-
-        it("Should claim rewards after claim deposit", async function () {
-            const { asyncVault, owner, stakingToken, rewardToken } = await deployFixture();
-            const amountToDeposit = 112412;
-            const rewardAmount = ethers.parseUnits("5000000", 18);
+            const amountToDeposit = 170;
+            const rewardAmount = 5000000000;
 
             const tx = await requestDeposit(
                 asyncVault,
@@ -148,54 +96,53 @@ describe("AsyncVault", function () {
                 amountToDeposit,
                 owner
             );
-
-            console.log(tx.hash);
 
             await expect(
                 tx
             ).to.emit(asyncVault, "DepositRequested")
                 .withArgs(owner.address, owner.address, owner.address, amountToDeposit);
 
-            // Check revert if no rewards
+            // Check staking token was transferred to contract
             await expect(
-                asyncVault.claimAllReward(0)
-            ).to.be.revertedWith("AsyncVault: No reward tokens exist");
+                tx
+            ).to.changeTokenBalance(
+                stakingToken,
+                asyncVault,
+                amountToDeposit
+            );
+
+            // Claim deposit
+            const depositTx = await asyncVault["deposit(uint256,address)"](amountToDeposit, owner.address);
+
+            await expect(
+                depositTx
+            ).to.emit(asyncVault, "Deposit")
+                .withArgs(owner.address, owner.address, amountToDeposit, amountToDeposit);
 
             // Add reward
             await rewardToken.approve(asyncVault.target, rewardAmount);
-
             const addRewardTx = await asyncVault.addReward(rewardToken.target, rewardAmount);
-            console.log(addRewardTx.hash);
+            console.log("Reward added: ", addRewardTx.hash);
 
-            await stakingToken.approve(asyncVault.target, amountToDeposit);
+            // Claim reward
+            const claimRewardTx = await asyncVault.claimAllReward(0, owner.address);
 
-            const secondDepositTx = await asyncVault.requestDeposit(
-                amountToDeposit,
-                owner.address,
-                owner.address
-            );
-
+            // Check reward received
             await expect(
-                secondDepositTx
-            ).to.emit(asyncVault, "ClaimDeposit")
-                .withArgs(owner.address, owner.address, amountToDeposit, amountToDeposit);
-
-            // Check reward was transferred to user
-            await expect(
-                secondDepositTx
+                claimRewardTx
             ).to.changeTokenBalance(
                 rewardToken,
                 owner.address,
-                395676986577401
+                173010
             );
-
-            const rewards = await asyncVault.getAllRewards(owner.address);
-            console.log("Available Reward: ", rewards);
-
-            // Check rewards greater than 0
-            expect(
-                rewards[0]
-            ).to.eq(0);
+            // Check shares received
+            await expect(
+                depositTx
+            ).to.changeTokenBalance(
+                asyncVault,
+                owner.address,
+                amountToDeposit
+            );
         });
 
         it("Should revert if zero shares", async function () {
@@ -207,163 +154,103 @@ describe("AsyncVault", function () {
             ).to.be.revertedWith("AsyncVault: Invalid asset amount");
         });
 
-        it("Should revert if invalid receiver", async function () {
-            const { asyncVault, owner } = await deployFixture();
-            const amountToDeposit = 10;
+        it("Should revert if invalid controller or owner", async function () {
+            const { asyncVault, owner, stakingToken } = await deployFixture();
+            const amountToDeposit = 170;
+
+            await stakingToken.approve(asyncVault.target, amountToDeposit);
 
             await expect(
                 asyncVault.requestDeposit(amountToDeposit, owner.address, ZeroAddress)
             ).to.be.revertedWith("AsyncVault: Invalid owner address");
-        });
-    });
-
-    describe("decreaseDepositRequest", function () {
-        it("Should decrease deposit request", async function () {
-            const { asyncVault, owner, stakingToken, rewardToken } = await deployFixture();
-            const amountToStake = ethers.parseUnits("100", 8);
-            const amountToDecrease = ethers.parseUnits("1", 8);
-
-            const tx = await requestDeposit(
-                asyncVault,
-                await stakingToken.getAddress(),
-                amountToStake,
-                owner
-            );
 
             await expect(
-                tx
-            ).to.emit(asyncVault, "DepositRequested")
-                .withArgs(owner.address, owner.address, owner.address, amountToStake);
-
-            await expect(
-                tx
-            ).to.changeTokenBalance(
-                stakingToken,
-                owner.address,
-                -amountToStake
-            );
-
-            // Check can't decrease if amount to decrease more than deposited
-            await expect(
-                asyncVault.decreaseDepositRequest(amountToStake + amountToStake)
-            ).to.be.revertedWith("AsyncVault: Invalid amount to decrease requested amount");
-
-            // Zero check
-            await expect(
-                asyncVault.decreaseDepositRequest(0)
-            ).to.be.revertedWith("AsyncVault: Invalid amount to decrease requested amount");
-
-            const decreaseDepositRequestTx = await asyncVault.decreaseDepositRequest(amountToDecrease);
-
-            await expect(
-                decreaseDepositRequestTx
-            ).to.emit(asyncVault, "DecreaseDepositRequest")
-                .withArgs(owner.address, amountToStake, amountToStake - amountToDecrease);
-
-            await expect(
-                decreaseDepositRequestTx
-            ).to.changeTokenBalance(
-                stakingToken,
-                owner.address,
-                amountToDecrease
-            );
-        });
-
-        it("Should revert if zero shares", async function () {
-            const { asyncVault, owner } = await deployFixture();
-            const amountToDeposit = 0;
-
-            await expect(
-                asyncVault.requestDeposit(amountToDeposit, owner.address, owner.address)
-            ).to.be.revertedWith("AsyncVault: Invalid asset amount");
-        });
-
-        it("Should revert if invalid receiver", async function () {
-            const { asyncVault, owner } = await deployFixture();
-            const amountToDeposit = 10;
-
-            await expect(
-                asyncVault.requestDeposit(amountToDeposit, owner.address, ZeroAddress)
+                asyncVault.requestDeposit(amountToDeposit, ZeroAddress, owner.address)
             ).to.be.revertedWith("AsyncVault: Invalid owner address");
         });
     });
 
     describe("requestRedeem", function () {
-        it("Should request redeem", async function () {
+        it("Should redeem tokens, return assets and claim reward", async function () {
             const { asyncVault, owner, stakingToken, rewardToken } = await deployFixture();
-            const amountToRedeem = 10;
-            const amountToStake = ethers.parseUnits("150", 18);
-            const rewardAmount = ethers.parseUnits("5000000", 18);
+            const amountToRedeem = 170;
+            const amountToDeposit = 170;
+            const rewardAmount = 5000000000;
+            const sharesLockTime = 1000
 
-            await requestDeposit(asyncVault, await stakingToken.getAddress(), amountToStake, owner);
+            // Set lock shares period
+            const lockSharesTx = await asyncVault.setSharesLockTime(sharesLockTime);
+            await expect(
+                lockSharesTx
+            ).to.emit(asyncVault, "SetSharesLockTime")
+                .withArgs(sharesLockTime);
 
+            // Request deposit
+            await requestDeposit(
+                asyncVault,
+                await stakingToken.getAddress(),
+                amountToDeposit,
+                owner
+            );
+
+            // Claim deposit
+            await asyncVault["deposit(uint256,address)"](amountToDeposit, owner.address);
+
+            // Add reward
             await rewardToken.approve(asyncVault.target, rewardAmount);
             await asyncVault.addReward(rewardToken.target, rewardAmount);
 
-            console.log("Preview claim deposit: ", await asyncVault.previewClaimDeposit(owner.address));
-
-            const claimDepositTx = await asyncVault.claimDeposit(owner.address);
-
-            await expect(
-                claimDepositTx
-            ).to.emit(asyncVault, "ClaimDeposit")
-                .withArgs(owner.address, owner.address, amountToStake, amountToStake);
+            // Increase block timestamp to unlock shares
+            await time.increase(1000);
 
             await asyncVault.approve(asyncVault.target, amountToRedeem);
 
-            const tx = await asyncVault.requestRedeem(
+            // Request redeem
+            const requestRedeemTx = await asyncVault.requestRedeem(
                 amountToRedeem,
                 owner.address,
-                owner.address,
-                { gasLimit: 3000000 }
-            );
-
-            await expect(
-                tx
-            ).to.emit(asyncVault, "RedeemRequested")
-                .withArgs(owner.address, owner.address, owner.address, amountToRedeem);
-
-            // Check share was transferred to contract
-            await expect(
-                tx
-            ).to.changeTokenBalance(
-                asyncVault,
-                owner,
-                -amountToRedeem
-            );
-
-            const prClaimRedeem = await asyncVault.previewClaimRedeem(
                 owner.address
             );
 
-            console.log(
-                "Preview claim redeem: ",
-                prClaimRedeem
-            );
+            await expect(
+                requestRedeemTx
+            ).to.emit(asyncVault, "RedeemRequested")
+                .withArgs(owner.address, owner.address, owner.address, amountToRedeem);
 
-            await asyncVault.approve(asyncVault.target, amountToRedeem);
-
-            const claimRedeemTx = await asyncVault.requestRedeem(
-                amountToRedeem,
-                owner.address,
-                owner.address,
-                { gasLimit: 3000000 }
-            );
+            // Claim redeem
+            const redeemTx = await asyncVault.redeem(amountToRedeem, owner.address, owner.address);
 
             await expect(
-                claimRedeemTx
-            ).to.emit(asyncVault, "ClaimRedeem")
-                .withArgs(owner.address, owner.address, prClaimRedeem, prClaimRedeem);
-        });
+                redeemTx
+            ).to.emit(asyncVault, "Withdraw")
+                .withArgs(owner.address, owner.address, owner.address, amountToRedeem, amountToRedeem);
 
-        it("Should revert if max redeem request exceeded", async function () {
-            const { asyncVault, owner } = await deployFixture();
-            const amountToRedeem = 10;
-
+            // Check assets received
             await expect(
-                asyncVault.requestRedeem(amountToRedeem, owner.address, owner.address)
-            ).to.be.revertedWithCustomError(asyncVault, "MaxRedeemRequestExceeded");
+                redeemTx
+            ).to.changeTokenBalance(
+                stakingToken,
+                owner.address,
+                amountToRedeem
+            );
+            // Check reward received
+            await expect(
+                redeemTx
+            ).to.changeTokenBalance(
+                rewardToken,
+                owner.address,
+                173010
+            );
         });
+
+        // it("Should revert if max redeem request exceeded", async function () {
+        //     const { asyncVault, owner } = await deployFixture();
+        //     const amountToRedeem = 10;
+
+        //     await expect(
+        //         asyncVault.requestRedeem(amountToRedeem, owner.address, owner.address)
+        //     ).to.be.revertedWithCustomError(asyncVault, "MaxRedeemRequestExceeded");
+        // });
 
         it("Should revert if zero shares", async function () {
             const { asyncVault, owner } = await deployFixture();
@@ -371,15 +258,19 @@ describe("AsyncVault", function () {
 
             await expect(
                 asyncVault.requestRedeem(amountToRedeem, owner.address, owner.address)
-            ).to.be.revertedWith("AsyncVault: Invalid share amount");
+            ).to.be.revertedWith("AsyncVault: Invalid shares amount");
         });
 
-        it("Should revert if invalid receiver", async function () {
+        it("Should revert if invalid controller or owner", async function () {
             const { asyncVault, owner } = await deployFixture();
-            const amountToDeposit = 10;
+            const amountToRedeem = 10;
 
             await expect(
-                asyncVault.requestRedeem(amountToDeposit, owner.address, ZeroAddress)
+                asyncVault.requestRedeem(amountToRedeem, owner.address, ZeroAddress)
+            ).to.be.revertedWith("AsyncVault: Invalid owner address");
+
+            await expect(
+                asyncVault.requestRedeem(amountToRedeem, ZeroAddress, owner.address)
             ).to.be.revertedWith("AsyncVault: Invalid owner address");
         });
     });

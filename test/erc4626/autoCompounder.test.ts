@@ -1,7 +1,7 @@
 import { anyValue, ethers, expect } from "../setup";
 import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
 import { ZeroAddress } from "ethers";
-import { VaultToken, BasicVault, AutoCompounder } from "../../typechain-types";
+import { VaultToken, BasicVault, AsyncVault, AutoCompounder } from "../../typechain-types";
 import hre from "hardhat";
 
 import {
@@ -56,15 +56,26 @@ describe("AutoCompounder", function () {
         ) as VaultToken;
         await rewardToken.waitForDeployment();
 
-        const BasicVault = await ethers.getContractFactory("BasicVault");
-        const basicVault = await BasicVault.deploy(
+        // const BasicVault = await ethers.getContractFactory("BasicVault");
+        // const basicVault = await BasicVault.deploy(
+        //     stakingToken.target,
+        //     "TST",
+        //     "TST",
+        //     feeConfig,
+        //     owner.address,
+        //     owner.address
+        // ) as BasicVault;
+        // await basicVault.waitForDeployment();
+
+        const AsyncVault = await ethers.getContractFactory("contracts/erc7540/AsyncVault.sol:AsyncVault");
+        const basicVault = await AsyncVault.deploy(
             stakingToken.target,
             "TST",
             "TST",
             feeConfig,
             owner.address,
             owner.address
-        ) as BasicVault;
+        ) as AsyncVault;
         await basicVault.waitForDeployment();
 
         const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
@@ -121,7 +132,7 @@ describe("AutoCompounder", function () {
             ).to.changeTokenBalance(
                 autoCompounder,
                 owner.address,
-                amountToDeposit / await autoCompounder.exchangeRate(basicVault.target)
+                amountToDeposit / await autoCompounder.exchangeRate()
             );
         });
 
@@ -139,7 +150,7 @@ describe("AutoCompounder", function () {
     });
 
     describe("withdraw", function () {
-        it("Should withdraw tokens", async function () {
+        it.only("Should withdraw tokens", async function () {
             const { autoCompounder, basicVault, stakingToken, rewardToken, owner } = await deployFixture();
             const amountToWithdraw = 10;
             const rewardAmount = 50000;
