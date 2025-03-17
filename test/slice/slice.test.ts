@@ -1,6 +1,6 @@
 import { ethers, expect } from "../setup";
 import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
-import { ZeroAddress, ZeroHash } from "ethers";
+import { AddressLike, ZeroAddress } from "ethers";
 import { VaultToken, Slice, BasicVault, AsyncVault, AutoCompounder } from "../../typechain-types";
 
 import {
@@ -8,6 +8,20 @@ import {
     uniswapRouterAddress,
     chainlinkAggregatorMockAddress
 } from "../../constants";
+import { VaultType, deployBasicVault, deployAsyncVault } from "../erc4626/helper";
+
+async function deployVaultWithType(
+    vaultType: VaultType,
+    stakingToken: AddressLike,
+    owner: AddressLike,
+    feeConfig: any
+) {
+    if (vaultType === VaultType.Basic) {
+        return await deployBasicVault(stakingToken, owner, feeConfig) as BasicVault;
+    } else {
+        return await deployAsyncVault(stakingToken, owner, feeConfig) as AsyncVault;
+    }
+}
 
 // constants
 const sTokenPayload = "sToken";
@@ -22,7 +36,7 @@ const feeConfig = {
 
 // Tests
 describe("Slice", function () {
-    async function deployFixture() {
+    async function deployFixture(vault1Type: VaultType, vault2Type: VaultType) {
         const [
             owner,
         ] = await ethers.getSigners();
@@ -53,39 +67,20 @@ describe("Slice", function () {
         ) as VaultToken;
         await rewardToken.waitForDeployment();
 
-        // Basic Vault
-        const Vault = await ethers.getContractFactory("BasicVault");
+        // Vault
+        const vault1 = await deployVaultWithType(
+            vault1Type,
+            stakingToken1,
+            owner,
+            feeConfig
+        );
 
-        const vault1 = await Vault.deploy(
-            stakingToken1.target,
-            "TST",
-            "TST",
-            feeConfig,
-            owner.address,
-            owner.address
-        ) as BasicVault;
-        await vault1.waitForDeployment();
-
-        const AsyncVault = await ethers.getContractFactory("contracts/erc7540/AsyncVault.sol:AsyncVault");
-        const vault2 = await AsyncVault.deploy(
-            stakingToken2.target,
-            "TST",
-            "TST",
-            feeConfig,
-            owner.address,
-            owner.address
-        ) as AsyncVault;
-        await vault2.waitForDeployment();
-
-        // const vault2 = await Vault.deploy(
-        //     stakingToken2.target,
-        //     "TST",
-        //     "TST",
-        //     feeConfig,
-        //     owner.address,
-        //     owner.address
-        // ) as BasicVault;
-        // await vault2.waitForDeployment();
+        const vault2 = await deployVaultWithType(
+            vault2Type,
+            stakingToken2,
+            owner,
+            feeConfig
+        );
 
         // AutoCompounder
         const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
@@ -136,7 +131,7 @@ describe("Slice", function () {
     }
 
     describe("rebalance", function () {
-        it.only("Should distribute tokens close to the provided allocation Autocompounders", async function () {
+        it("Should distribute tokens close to the provided allocation Autocompounders", async function () {
             const {
                 slice,
                 owner,
@@ -147,7 +142,7 @@ describe("Slice", function () {
                 stakingToken1,
                 stakingToken2,
                 rewardToken,
-            } = await deployFixture();
+            } = await deployFixture(VaultType.Basic, VaultType.Async);
             const allocationPercentage1 = 4000;
             const allocationPercentage2 = 6000;
             const amountToDeposit = ethers.parseUnits("50", 12);
@@ -249,7 +244,7 @@ describe("Slice", function () {
                 autoCompounder1,
                 vault1,
                 stakingToken1,
-            } = await deployFixture();
+            } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage1 = 4000;
             const amountToDeposit = ethers.parseUnits("50", 12);
 
@@ -283,7 +278,7 @@ describe("Slice", function () {
             const {
                 slice,
                 autoCompounder1,
-            } = await deployFixture();
+            } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const amountToDeposit = 0;
 
             await expect(
@@ -294,7 +289,7 @@ describe("Slice", function () {
         it("Should revert if allocation for the deposited token doesn't exist", async function () {
             const {
                 slice,
-            } = await deployFixture();
+            } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const amountToDeposit = ethers.parseUnits("50", 12);
 
             await expect(
@@ -310,7 +305,7 @@ describe("Slice", function () {
                 owner,
                 autoCompounder1,
                 stakingToken1,
-            } = await deployFixture();
+            } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage1 = 4000;
             const amountToDeposit = ethers.parseUnits("50", 12);
             const amountToWithdraw = ethers.parseUnits("25", 12);
@@ -347,7 +342,7 @@ describe("Slice", function () {
                 slice,
                 autoCompounder1,
                 stakingToken1,
-            } = await deployFixture();
+            } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage1 = 4000;
             const amountToDeposit = ethers.parseUnits("50", 12);
             const amountToWithdraw = 0;
@@ -371,7 +366,7 @@ describe("Slice", function () {
 
     describe("addAllocation", function () {
         it("Should add token allocation", async function () {
-            const { slice, owner, autoCompounder1, stakingToken1 } = await deployFixture();
+            const { slice, owner, autoCompounder1, stakingToken1 } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage = 4000;
 
             const tx = await slice.addAllocation(
@@ -390,7 +385,7 @@ describe("Slice", function () {
         });
 
         it("Should revert if zero token address", async function () {
-            const { slice } = await deployFixture();
+            const { slice } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage = 4000;
 
             await expect(
@@ -403,7 +398,7 @@ describe("Slice", function () {
         });
 
         it("Should revert if invalid price id", async function () {
-            const { slice, autoCompounder1 } = await deployFixture();
+            const { slice, autoCompounder1 } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage = 4000;
 
             await expect(
@@ -416,7 +411,7 @@ describe("Slice", function () {
         });
 
         it("Should revert if invalid percentage", async function () {
-            const { slice, autoCompounder1 } = await deployFixture();
+            const { slice, autoCompounder1 } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage = 0;
 
             await expect(
@@ -429,7 +424,7 @@ describe("Slice", function () {
         });
 
         it("Should revert if token already added", async function () {
-            const { slice, owner, autoCompounder1 } = await deployFixture();
+            const { slice, owner, autoCompounder1 } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage = 4000;
 
             const tx = await slice.addAllocation(
@@ -451,7 +446,7 @@ describe("Slice", function () {
 
     describe("setAllocationPercentage", function () {
         it("Should change allocation percentage", async function () {
-            const { slice, owner, autoCompounder1 } = await deployFixture();
+            const { slice, owner, autoCompounder1 } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage = 4000;
             const newAllocationPercentage = 5000;
 
@@ -480,7 +475,7 @@ describe("Slice", function () {
         });
 
         it("Should revert if token doesn't exist", async function () {
-            const { slice, autoCompounder1 } = await deployFixture();
+            const { slice, autoCompounder1 } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage = 4000;
 
             await expect(
@@ -492,7 +487,7 @@ describe("Slice", function () {
         });
 
         it("Should revert if invalid percentage", async function () {
-            const { slice, autoCompounder1 } = await deployFixture();
+            const { slice, autoCompounder1 } = await deployFixture(VaultType.Basic, VaultType.Basic);
             const allocationPercentage = 0;
 
             await expect(

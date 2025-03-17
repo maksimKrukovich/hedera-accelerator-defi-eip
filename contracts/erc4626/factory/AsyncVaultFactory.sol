@@ -8,7 +8,7 @@ import {IOwnable} from "./interfaces/IOwnable.sol";
 
 import {IVaultFactory} from "./interfaces/IVaultFactory.sol";
 
-import {BasicVault} from "../BasicVault.sol";
+import {AsyncVault} from "../../erc7540/AsyncVault.sol";
 import {FeeConfiguration} from "../../common/FeeConfiguration.sol";
 
 /**
@@ -17,7 +17,7 @@ import {FeeConfiguration} from "../../common/FeeConfiguration.sol";
  * The contract which allows to deploy Vaults with different parameters
  * and track contract addresses.
  */
-contract VaultFactory is Ownable, IVaultFactory, ERC165 {
+contract AsyncVaultFactory is Ownable, IVaultFactory, ERC165 {
     // Used salt => deployed Vault
     mapping(string => address) public vaultDeployed;
 
@@ -69,7 +69,7 @@ contract VaultFactory is Ownable, IVaultFactory, ERC165 {
         VaultDetails calldata vaultDetails,
         FeeConfiguration.FeeConfig calldata feeConfig
     ) private returns (address) {
-        bytes memory _code = type(BasicVault).creationCode;
+        bytes memory _code = type(AsyncVault).creationCode;
 
         bytes memory _constructData = abi.encode(
             vaultDetails.stakingToken,

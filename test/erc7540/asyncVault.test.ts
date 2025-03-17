@@ -145,6 +145,26 @@ describe("AsyncVault", function () {
             );
         });
 
+        it("Should revert if max deposit request", async function () {
+            const { asyncVault, owner, stakingToken } = await deployFixture();
+            const amountToDeposit = 170;
+            const amountToClaimDeposit = 180;
+
+            // Request deposit
+            await requestDeposit(
+                asyncVault,
+                await stakingToken.getAddress(),
+                amountToDeposit,
+                owner
+            );
+
+            // Claim deposit
+            await expect(
+                asyncVault["deposit(uint256,address)"](amountToClaimDeposit, owner.address)
+            ).to.be.revertedWithCustomError(asyncVault, "MaxDepositRequestExceeded")
+                .withArgs(owner.address, amountToClaimDeposit, amountToDeposit);
+        });
+
         it("Should revert if zero shares", async function () {
             const { asyncVault, owner } = await deployFixture();
             const amountToDeposit = 0;
@@ -243,14 +263,27 @@ describe("AsyncVault", function () {
             );
         });
 
-        // it("Should revert if max redeem request exceeded", async function () {
-        //     const { asyncVault, owner } = await deployFixture();
-        //     const amountToRedeem = 10;
+        it("Should revert if max redeem request exceeded", async function () {
+            const { asyncVault, owner, stakingToken } = await deployFixture();
+            const amountToDeposit = 170;
+            const amountToRedeem = 180;
 
-        //     await expect(
-        //         asyncVault.requestRedeem(amountToRedeem, owner.address, owner.address)
-        //     ).to.be.revertedWithCustomError(asyncVault, "MaxRedeemRequestExceeded");
-        // });
+            // Request deposit
+            await requestDeposit(
+                asyncVault,
+                await stakingToken.getAddress(),
+                amountToDeposit,
+                owner
+            );
+
+            // Claim deposit
+            await asyncVault["deposit(uint256,address)"](amountToDeposit, owner.address);
+
+            await expect(
+                asyncVault.redeem(amountToRedeem, owner.address, owner.address)
+            ).to.be.revertedWithCustomError(asyncVault, "MaxRedeemRequestExceeded")
+                .withArgs(owner.address, amountToRedeem, 0);
+        });
 
         it("Should revert if zero shares", async function () {
             const { asyncVault, owner } = await deployFixture();
@@ -272,6 +305,108 @@ describe("AsyncVault", function () {
             await expect(
                 asyncVault.requestRedeem(amountToRedeem, ZeroAddress, owner.address)
             ).to.be.revertedWith("AsyncVault: Invalid owner address");
+        });
+    });
+
+    describe("withdraw", function () {
+        it("Should stake the staking token, claim deposit and withdraw", async function () {
+            const { asyncVault, owner, stakingToken, rewardToken } = await deployFixture();
+            const amountToDeposit = 170;
+            const amountToWithdraw = 170;
+            const rewardAmount = 5000000000;
+
+            const tx = await requestDeposit(
+                asyncVault,
+                await stakingToken.getAddress(),
+                amountToDeposit,
+                owner
+            );
+
+            await expect(
+                tx
+            ).to.emit(asyncVault, "DepositRequested")
+                .withArgs(owner.address, owner.address, owner.address, amountToDeposit);
+
+            // Check staking token was transferred to contract
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                stakingToken,
+                asyncVault,
+                amountToDeposit
+            );
+
+            // Claim deposit
+            const depositTx = await asyncVault["deposit(uint256,address)"](amountToDeposit, owner.address);
+
+            await expect(
+                depositTx
+            ).to.emit(asyncVault, "Deposit")
+                .withArgs(owner.address, owner.address, amountToDeposit, amountToDeposit);
+
+            // Check shares received
+            await expect(
+                depositTx
+            ).to.changeTokenBalance(
+                asyncVault,
+                owner.address,
+                amountToDeposit
+            );
+
+            // Add reward
+            await rewardToken.approve(asyncVault.target, rewardAmount);
+            const addRewardTx = await asyncVault.addReward(rewardToken.target, rewardAmount);
+            console.log("Reward added: ", addRewardTx.hash);
+
+            // Request redeem
+            const requestRedeemTx = await asyncVault.requestRedeem(amountToWithdraw, owner.address, owner.address);
+
+            await expect(
+                requestRedeemTx
+            ).to.emit(asyncVault, "RedeemRequested")
+                .withArgs(owner.address, owner.address, owner.address, amountToWithdraw);
+
+            // Withdraw
+            const withdrawTx = await asyncVault.withdraw(amountToWithdraw, owner.address, owner.address);
+
+            // Check reward received
+            await expect(
+                withdrawTx
+            ).to.changeTokenBalance(
+                rewardToken,
+                owner.address,
+                173010
+            );
+            // Check assets received
+            await expect(
+                withdrawTx
+            ).to.changeTokenBalance(
+                stakingToken,
+                owner.address,
+                amountToWithdraw
+            );
+        });
+
+        it("Should revert if max redeem request for withdraw exceeded", async function () {
+            const { asyncVault, owner, stakingToken } = await deployFixture();
+            const amountToDeposit = 170;
+            const amountToRedeem = 180;
+
+            // Request deposit
+            await requestDeposit(
+                asyncVault,
+                await stakingToken.getAddress(),
+                amountToDeposit,
+                owner
+            );
+
+            // Claim deposit
+            await asyncVault["deposit(uint256,address)"](amountToDeposit, owner.address);
+
+            await expect(
+                asyncVault.withdraw(amountToRedeem, owner.address, owner.address)
+            ).to.be.revertedWithCustomError(asyncVault, "ERC4626ExceededMaxWithdraw")
+                .withArgs(owner.address, amountToRedeem, 0);
         });
     });
 

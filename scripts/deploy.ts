@@ -6,9 +6,7 @@ import TestnetDeployments from '../data/deployments/chain-296.json';
 
 import {
   usdcAddress,
-  uniswapRouterAddress,
-  pythOracleAddress,
-  pythUtilsAddress
+  uniswapRouterAddress
 } from "../constants";
 
 // Initial function for logs and configs
@@ -271,34 +269,30 @@ async function deployAsyncVault(contracts: Record<string, any>): Promise<Record<
     asyncVault: {
       Vault: asyncVault.target,
       StakingToken: stakingTokenAddress,
-      Share: await asyncVault.share(),
+      Share: asyncVault.target,
       RewardToken: "0x" + rewardToken!.toSolidityAddress()
     }
   };
 }
 
-// Deploy Token balancer
-async function deployTokenBalancer(contracts: Record<string, any>): Promise<Record<string, any>> {
+// Deploy Slice
+async function deploySlice(contracts: Record<string, any>): Promise<Record<string, any>> {
   const [deployer] = await ethers.getSigners();
 
-  // Set Pyth Utils lib address
-  const TokenBalancer = await ethers.getContractFactory("TokenBalancer", {
-    libraries: {
-      PythUtils: pythUtilsAddress
-    }
-  });
-
-  const tokenBalancer = await TokenBalancer.deploy(
-    pythOracleAddress,
+  const Slice = await ethers.getContractFactory("Slice");
+  const slice = await Slice.deploy(
     uniswapRouterAddress,
-    usdcAddress
+    usdcAddress,
+    "S",
+    "S",
+    "ipfs://bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/m"
   );
-  await tokenBalancer.waitForDeployment();
+  await slice.waitForDeployment();
 
   return {
     ...contracts,
     balancer: {
-      TokenBalancer: tokenBalancer.target
+      Slice: slice.target
     }
   };
 }
@@ -385,7 +379,7 @@ async function createERC721Metadata(contracts: Record<string, any>): Promise<Rec
 }
 
 // deploy upgradeable BuildingFactory
-async function createBuildingFactory(contracts: Record<string, any>) : Promise<Record<string, any>> {  
+async function createBuildingFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
   const buildingFact = await ethers.getContractFactory('Building');
   const buildingBeacon = await upgrades.deployBeacon(buildingFact);
   const buildingBeaconAddress = await buildingBeacon.getAddress();
@@ -406,14 +400,14 @@ async function createBuildingFactory(contracts: Record<string, any>) : Promise<R
     buildingFactoryBeaconAddress,
     buildingFactoryFactory,
     [
-      contracts.implementations.ERC721Metadata, 
-      uniswapRouterAddress, 
+      contracts.implementations.ERC721Metadata,
+      uniswapRouterAddress,
       uniswapFactoryAddress,
       buildingBeaconAddress,
       identityGatewayAddress,
       trexGatewayAddress,
     ],
-    { 
+    {
       initializer: 'initialize'
     }
   );
@@ -462,7 +456,7 @@ init()
   .then(deployERC3643)
   .then(deployComplianceModules)
   .then(deployVault)
-  .then(deployTokenBalancer)
+  .then(deploySlice)
   .then(deployAutoCompounder)
   .then(deployAutoCompounderFactory)
   .then(deployHTSTokenFactory)

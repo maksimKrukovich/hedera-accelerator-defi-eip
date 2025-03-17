@@ -106,8 +106,8 @@ abstract contract ERC7540 is ERC4626, IERC7540 {
      */
     function deposit(uint256 assets, address receiver, address controller) public virtual returns (uint256 shares) {
         _validateController(controller);
-        if (assets > maxDepositRequest(controller))
-            revert MaxDepositRequestExceeded(controller, assets, maxDepositRequest(controller));
+        if (assets > maxDeposit(controller))
+            revert MaxDepositRequestExceeded(controller, assets, maxDeposit(controller));
         ERC7540_FilledRequest memory claimable = _claimableDepositRequest[controller];
         shares = claimable.convertToShares(assets);
         (shares, ) = _deposit(assets, shares, receiver, controller);
@@ -160,12 +160,29 @@ abstract contract ERC7540 is ERC4626, IERC7540 {
      * @return assets The amount of assets returned.
      */
     function redeem(uint256 shares, address to, address controller) public virtual override returns (uint256 assets) {
-        if (shares > maxRedeemRequest(controller))
-            revert MaxRedeemRequestExceeded(controller, shares, maxRedeemRequest(controller));
         _validateController(controller);
+        if (shares > maxRedeem(controller)) revert MaxRedeemRequestExceeded(controller, shares, maxRedeem(controller));
         ERC7540_FilledRequest memory claimable = _claimableRedeemRequest[controller];
         assets = claimable.convertToAssets(shares);
         (assets, ) = _withdraw(assets, shares, to, controller);
+    }
+
+    /**
+     * @dev Claims processed redemption request.
+     * @dev Can only be called by controller or approved operator.
+     *
+     * @param assets The amount of assets to withdraw.
+     * @param to The assets receiver.
+     * @param controller The controller of the redemption request.
+     * @return shares The amount of shares.
+     */
+    function withdraw(uint256 assets, address to, address controller) public virtual override returns (uint256 shares) {
+        _validateController(controller);
+        if (assets > maxWithdraw(controller))
+            revert ERC4626ExceededMaxWithdraw(controller, assets, maxWithdraw(controller));
+        ERC7540_FilledRequest memory claimable = _claimableRedeemRequest[controller];
+        shares = claimable.convertToShares(assets);
+        (, shares) = _withdraw(assets, shares, to, controller);
     }
 
     function _withdraw(
@@ -178,6 +195,9 @@ abstract contract ERC7540 is ERC4626, IERC7540 {
             _claimableRedeemRequest[controller].assets -= assets;
             _claimableRedeemRequest[controller].shares -= shares;
         }
+
+        // Burn shares and transfer assets
+        _burn(address(this), shares);
         IERC20(asset()).safeTransfer(receiver, assets);
 
         emit Withdraw(msg.sender, receiver, controller, assets, shares);
@@ -259,15 +279,29 @@ abstract contract ERC7540 is ERC4626, IERC7540 {
     /**
      * @dev Returns the max possible amount of assets to deposit.
      */
-    function maxDepositRequest(address owner) public view returns (uint256) {
+    function maxDeposit(address owner) public view virtual override returns (uint256) {
         return _claimableDepositRequest[owner].assets;
+    }
+
+    /**
+     * @dev Returns the max possible amount of shares to mint.
+     */
+    function maxMint(address owner) public view virtual override returns (uint256 shares) {
+        return _claimableDepositRequest[owner].shares;
     }
 
     /**
      * @dev Returns the max possible amount of shares to redeem.
      */
-    function maxRedeemRequest(address owner) public view returns (uint256) {
+    function maxRedeem(address owner) public view virtual override returns (uint256) {
         return _claimableRedeemRequest[owner].shares;
+    }
+
+    /**
+     * @dev Returns the max possible amount of assets to withdraw.
+     */
+    function maxWithdraw(address owner) public view virtual override returns (uint256 shares) {
+        return convertToAssets(maxRedeem(owner));
     }
 
     /**

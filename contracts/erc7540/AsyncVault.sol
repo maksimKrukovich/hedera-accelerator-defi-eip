@@ -29,7 +29,7 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
     using FixedPointMathLib for uint256;
 
     // Min reward amount considired in case of small reward
-    uint256 private constant MIN_REWARD = 1;
+    uint8 private constant MIN_REWARD = 1;
 
     // Shares lock time
     uint32 private sharesLockTime;
@@ -190,7 +190,6 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @return assets The amount of assets redeemed.
      */
     function redeem(uint256 shares, address receiver, address controller) public override returns (uint256 assets) {
-        _beforeWithdraw(assets, receiver);
         return super.redeem(shares, receiver, controller);
     }
 
@@ -203,9 +202,20 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @return shares The amount of shares burned.
      */
     function withdraw(uint256 assets, address receiver, address controller) public override returns (uint256 shares) {
-        _checkSharesLocked(controller);
-        _beforeWithdraw(assets, receiver);
         return super.withdraw(assets, receiver, controller);
+    }
+
+    /**
+     * @dev Override to include '_beforeWithdraw' hook.
+     */
+    function _withdraw(
+        uint256 assets,
+        uint256 shares,
+        address receiver,
+        address controller
+    ) internal override returns (uint256 assetsReturn, uint256 sharesReturn) {
+        _beforeWithdraw(assets, receiver);
+        return super._withdraw(assets, shares, receiver, controller);
     }
 
     /**

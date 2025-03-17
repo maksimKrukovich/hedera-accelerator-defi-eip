@@ -1,19 +1,19 @@
 {
   "_format": "hh-sol-artifact-1",
-  "contractName": "IToken",
+  "contractName": "IVault",
   "sourceName": "contracts/treasury/Treasury.sol",
   "abi": [
     {
-      "inputs": [],
-      "name": "identityRegistry",
-      "outputs": [
+      "inputs": [
         {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
         }
       ],
-      "stateMutability": "view",
+      "name": "deposit",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     }
   ],

@@ -4,6 +4,48 @@
   "sourceName": "contracts/erc7540/interfaces/IERC7540.sol",
   "abi": [
     {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "controller",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "assets",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxDeposit",
+          "type": "uint256"
+        }
+      ],
+      "name": "MaxDepositRequestExceeded",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "controller",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "shares",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "maxShares",
+          "type": "uint256"
+        }
+      ],
+      "name": "MaxRedeemRequestExceeded",
+      "type": "error"
+    },
+    {
       "anonymous": false,
       "inputs": [
         {
@@ -66,19 +108,6 @@
       "type": "event"
     },
     {
-      "inputs": [],
-      "name": "asset",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
       "inputs": [
         {
           "internalType": "address",
@@ -125,7 +154,7 @@
         },
         {
           "internalType": "address",
-          "name": "operator",
+          "name": "controller",
           "type": "address"
         },
         {
@@ -148,7 +177,7 @@
         },
         {
           "internalType": "address",
-          "name": "operator",
+          "name": "controller",
           "type": "address"
         },
         {
@@ -160,19 +189,6 @@
       "name": "requestRedeem",
       "outputs": [],
       "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "share",
-      "outputs": [
-        {
-          "internalType": "address",
-          "name": "",
-          "type": "address"
-        }
-      ],
-      "stateMutability": "view",
       "type": "function"
     }
   ],
