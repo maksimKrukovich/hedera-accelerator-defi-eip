@@ -11,6 +11,8 @@ import {IVaultFactory} from "./interfaces/IVaultFactory.sol";
 import {BasicVault} from "../BasicVault.sol";
 import {FeeConfiguration} from "../../common/FeeConfiguration.sol";
 
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+
 /**
  * @title Vault Factory
  *
@@ -56,6 +58,28 @@ contract VaultFactory is Ownable, IVaultFactory, ERC165 {
             vaultDetails.stakingToken,
             vaultDetails.shareTokenName,
             vaultDetails.shareTokenSymbol
+        );
+    }
+
+    /**
+     * Gen Salt string for CREATE2
+     * @param deployer address
+     * @param nonce uint256
+     * @param token address
+     */
+    function generateSalt(
+        address deployer,
+        address token,
+        uint256 nonce
+    ) external pure returns (string memory) {
+        // Convert the deployer and token addresses to hexadecimal strings,
+        // and the nonce to a decimal string.
+        return string(
+            abi.encodePacked(
+                Strings.toHexString(uint256(uint160(deployer)), 20),
+                Strings.toHexString(uint256(uint160(token)), 20),
+                Strings.toString(nonce)
+            )
         );
     }
 

@@ -10,7 +10,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /// @title BuildingLiquidityPool
 /// @author Hashgraph
 /// @notice This contract uses namespaced storage see https://docs.openzeppelin.com/contracts/5.x/upgradeable#namespaced_storage
-abstract contract BuildingLiquidityPool is Initializable {
+abstract contract BuildingLiquidityPool is Initializable, HederaTokenService {
     /// @custom:storage-location erc7201:hashgraph.buildings.BuildingLiquidityPool
     struct BuildingLiquidityPoolStorage {
         address uniswapRouter;
