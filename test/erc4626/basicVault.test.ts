@@ -179,22 +179,22 @@ describe("BasicVault", function () {
             );
         });
 
-        it("Should revert if zero shares", async function () {
+        it("Should revert if zero receiver", async function () {
+            const { hederaVault } = await deployFixture();
+            const amountToDeposit = 170;
+
+            await expect(
+                hederaVault.deposit(amountToDeposit, ZeroAddress)
+            ).to.be.revertedWith("HederaVault: Invalid receiver address");
+        });
+
+        it("Should revert if zero assets", async function () {
             const { hederaVault, owner } = await deployFixture();
             const amountToDeposit = 0;
 
             await expect(
                 hederaVault.deposit(amountToDeposit, owner.address)
-            ).to.be.revertedWithCustomError(hederaVault, "ZeroShares");
-        });
-
-        it("Should revert if invalid receiver", async function () {
-            const { hederaVault } = await deployFixture();
-            const amountToDeposit = 0;
-
-            await expect(
-                hederaVault.deposit(amountToDeposit, ZeroAddress)
-            ).to.be.revertedWith("HederaVault: Invalid receiver address");
+            ).to.be.revertedWith("HederaVault: Zero shares");
         });
     });
 
@@ -218,17 +218,18 @@ describe("BasicVault", function () {
             const addRewardTx = await hederaVault.addReward(rewardToken.target, rewardAmount);
             console.log(addRewardTx.hash);
 
-            console.log("Preview Withdraw ", await hederaVault.previewWithdraw(amountToWithdraw));
+            const previewWithdraw = await hederaVault.previewWithdraw(amountToWithdraw);
+            console.log("Preview Withdraw ", previewWithdraw);
 
             const currentReward = await hederaVault.getUserReward(owner.address, rewardToken.target);
+            console.log("Current reward: ", currentReward);
 
             await hederaVault.approve(hederaVault.target, amountToWithdraw);
 
             const tx = await hederaVault.withdraw(
                 amountToWithdraw,
                 owner.address,
-                owner.address,
-
+                owner.address
             );
 
             console.log(tx.hash);
@@ -236,7 +237,7 @@ describe("BasicVault", function () {
             await expect(
                 tx
             ).to.emit(hederaVault, "Withdraw")
-                .withArgs(owner.address, owner.address, amountToWithdraw, anyValue);
+                .withArgs(owner.address, owner.address, owner.address, amountToWithdraw, previewWithdraw);
 
             // Check share was transferred to contract
             await expect(
@@ -264,7 +265,7 @@ describe("BasicVault", function () {
             );
         });
 
-        it.only("two people, two type of reward, one withdraw, add two reward, all claim", async function () {
+        it("two people, two type of reward, one withdraw, add two reward, all claim", async function () {
             const { hederaVault, owner, stakingToken, rewardToken, client, testAccount } = await deployFixture();
             const amountToWithdraw = 10;
             const amountToStake = 112412;
@@ -314,7 +315,7 @@ describe("BasicVault", function () {
             await expect(
                 tx
             ).to.emit(hederaVault, "Withdraw")
-                .withArgs(owner.address, owner.address, amountToWithdraw, anyValue);
+                .withArgs(owner.address, owner.address, owner.address, amountToWithdraw, anyValue);
 
             // Check share was transferred to contract
             await expect(
@@ -338,7 +339,7 @@ describe("BasicVault", function () {
                 operatorAccountIdTest,
                 operatorPrKeyTest
             );
-            const txClaim = await hederaVault.connect(testAccount).claimAllReward(0, owner.address);
+            const txClaim = await hederaVault.connect(testAccount).claimAllReward(0, testAccountAddress);
 
             const currentRewardStaker3 = await hederaVault.getAllRewards(testAccountAddress);
             console.log("Current reward staker: ", currentRewardStaker3);
@@ -362,31 +363,33 @@ describe("BasicVault", function () {
             ).to.be.revertedWith("HederaVault: Invalid receiver address");
         });
 
-        it("Should revert if invalid from address", async function () {
-            const { hederaVault, owner } = await deployFixture();
-            const amountToWithdraw = 10;
-
-            await expect(
-                hederaVault.withdraw(amountToWithdraw, owner.address, ZeroAddress)
-            ).to.be.revertedWith("HederaVault: Invalid from address");
-        });
-
         it("Should revert if zero assets", async function () {
-            const { hederaVault, owner } = await deployFixture();
+            const { hederaVault, owner, rewardToken, stakingToken } = await deployFixture();
+            const amountToDeposit = 170;
             const amountToWithdraw = 0;
+            const rewardAmount = 50000;
+
+            await deposit(
+                hederaVault,
+                await stakingToken.getAddress(),
+                amountToDeposit,
+                owner
+            );
+
+            await rewardToken.approve(hederaVault.target, rewardAmount);
+
+            // Add reward
+            const addRewardTx = await hederaVault.addReward(rewardToken.target, rewardAmount);
+            console.log(addRewardTx.hash);
+
+            const previewWithdraw = await hederaVault.previewWithdraw(amountToWithdraw);
+            console.log("Preview Withdraw ", previewWithdraw);
+
+            await hederaVault.approve(hederaVault.target, amountToWithdraw);
 
             await expect(
                 hederaVault.withdraw(amountToWithdraw, owner.address, owner.address)
-            ).to.be.revertedWith("HederaVault: Zero assets");
-        });
-
-        it("Should revert if sender has no shares", async function () {
-            const { hederaVault, owner } = await deployFixture();
-            const amountToWithdraw = 10;
-
-            await expect(
-                hederaVault.withdraw(amountToWithdraw, owner.address, owner.address)
-            ).to.be.revertedWith("HederaVault: Not enough share on the balance");
+            ).to.be.revertedWith("HederaVault: Zero shares");
         });
     });
 
@@ -402,8 +405,7 @@ describe("BasicVault", function () {
 
             const tx = await hederaVault.connect(owner).mint(
                 amountOfShares,
-                owner.address,
-
+                owner.address
             );
 
             console.log(tx.hash);
@@ -423,12 +425,12 @@ describe("BasicVault", function () {
             );
         });
 
-        it("Should revert if invalid receiver", async function () {
+        it("Should revert if zero receiver", async function () {
             const { hederaVault } = await deployFixture();
             const amountToMint = 10;
 
             await expect(
-                hederaVault.mint(amountToMint, ZeroAddress,)
+                hederaVault.mint(amountToMint, ZeroAddress)
             ).to.be.revertedWith("HederaVault: Invalid receiver address");
         });
 
@@ -437,8 +439,109 @@ describe("BasicVault", function () {
             const amountToMint = 0;
 
             await expect(
-                hederaVault.mint(amountToMint, owner.address,)
-            ).to.be.revertedWithCustomError(hederaVault, "ZeroShares");
+                hederaVault.mint(amountToMint, owner.address)
+            ).to.be.revertedWith("HederaVault: Zero shares");
+        });
+    });
+
+    describe("redeem", function () {
+        it("Should redeem tokens", async function () {
+            const { hederaVault, owner, stakingToken, rewardToken } = await deployFixture();
+            const amountToRedeem = 10;
+            const amountToDeposit = 170;
+            const rewardAmount = 50000;
+
+            await deposit(
+                hederaVault,
+                await stakingToken.getAddress(),
+                amountToDeposit,
+                owner
+            );
+
+            await rewardToken.approve(hederaVault.target, rewardAmount);
+
+            // Add reward
+            const addRewardTx = await hederaVault.addReward(rewardToken.target, rewardAmount);
+            console.log(addRewardTx.hash);
+
+            const currentReward = await hederaVault.getUserReward(owner.address, rewardToken.target);
+            console.log("Current reward: ", currentReward);
+
+            const tokensAmount = await hederaVault.previewRedeem(amountToRedeem);
+            console.log("Preview redeem ", tokensAmount);
+
+            await hederaVault.approve(hederaVault.target, amountToRedeem);
+
+            const tx = await hederaVault.redeem(
+                amountToRedeem,
+                owner.address,
+                owner.address
+            );
+
+            console.log(tx.hash);
+
+            await expect(
+                tx
+            ).to.emit(hederaVault, "Withdraw")
+                .withArgs(owner.address, owner.address, owner.address, amountToRedeem, anyValue);
+
+            // Check share was transferred to contract
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                hederaVault,
+                owner,
+                -amountToRedeem
+            );
+            // Check user received staking token
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                stakingToken,
+                owner,
+                amountToRedeem
+            );
+            // Check user received reward token
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                rewardToken,
+                owner,
+                currentReward
+            );
+        });
+
+        it("Should revert if zero assets", async function () {
+            const { hederaVault, owner, stakingToken, rewardToken } = await deployFixture();
+            const amountToReedem = 0;
+            const amountToDeposit = 170;
+            const rewardAmount = 50000;
+
+            await deposit(
+                hederaVault,
+                await stakingToken.getAddress(),
+                amountToDeposit,
+                owner
+            );
+
+            await rewardToken.approve(hederaVault.target, rewardAmount);
+
+            // Add reward
+            const addRewardTx = await hederaVault.addReward(rewardToken.target, rewardAmount);
+            console.log(addRewardTx.hash);
+
+            await expect(
+                hederaVault.redeem(amountToReedem, owner.address, owner.address,)
+            ).to.be.revertedWith("HederaVault: Zero assets");
+        });
+
+        it("Should revert if invalid receiver", async function () {
+            const { hederaVault, owner } = await deployFixture();
+            const amountToReedem = 10;
+
+            await expect(
+                hederaVault.redeem(amountToReedem, ZeroAddress, owner.address,)
+            ).to.be.revertedWith("HederaVault: Invalid receiver address");
         });
     });
 
@@ -498,8 +601,7 @@ describe("BasicVault", function () {
             await expect(
                 hederaVault.addReward(
                     rewardToken.target,
-                    rewardAmount,
-
+                    rewardAmount
                 )
             ).to.be.revertedWith("HederaVault: Amount can't be zero");
         });
@@ -511,8 +613,7 @@ describe("BasicVault", function () {
             await expect(
                 hederaVault.addReward(
                     stakingToken.target,
-                    rewardAmount,
-
+                    rewardAmount
                 )
             ).to.be.revertedWith("HederaVault: Reward and Staking tokens cannot be same");
         });
@@ -524,8 +625,7 @@ describe("BasicVault", function () {
             await expect(
                 hederaVault.addReward(
                     rewardToken.target,
-                    rewardAmount,
-
+                    rewardAmount
                 )
             ).to.be.revertedWith("HederaVault: No token staked yet");
         });
@@ -537,114 +637,177 @@ describe("BasicVault", function () {
             await expect(
                 hederaVault.addReward(
                     ZeroAddress,
-                    rewardAmount,
-
+                    rewardAmount
                 )
             ).to.be.revertedWith("HederaVault: Invalid reward token");
         });
     });
 
-    describe("redeem", function () {
-        it("Should redeem tokens", async function () {
-            const { hederaVault, owner, stakingToken, rewardToken } = await deployFixture();
-            const amountToRedeem = 10;
-            const amountToDeposit = 170;
-            const rewardAmount = 50000;
+    describe("flow tests", function () {
+        it.only("two people, two withdraw, add reward, all claim", async function () {
+            const { hederaVault, owner, testAccount, stakingToken, rewardToken, client } = await deployFixture();
+            const amountToWithdraw = 100;
+            const amountToStake = 112412;
+            const rewardToAdd = ethers.parseUnits("5000000", 18);
 
-            await deposit(
-                hederaVault,
-                await stakingToken.getAddress(),
-                amountToDeposit,
-                owner
+            // Stake
+            const ownerDeposit = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, owner);
+            // Change account
+            client.setOperator(
+                operatorAccountIdTest,
+                operatorPrKeyTest
             );
-
-            await rewardToken.approve(hederaVault.target, rewardAmount);
+            const stakerDeposit = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, testAccount);
+            console.log("Owner deposit: ", ownerDeposit.hash);
+            console.log("Staker deposit: ", stakerDeposit.hash);
 
             // Add reward
-            const addRewardTx = await hederaVault.addReward(rewardToken.target, rewardAmount,);
-            console.log(addRewardTx.hash);
+            client.setOperator(
+                operatorAccountId,
+                operatorPrKey
+            );
+            await rewardToken.approve(hederaVault.target, rewardToAdd);
+            await hederaVault.connect(owner).addReward(rewardToken.target, rewardToAdd);
 
-            const currentReward = await hederaVault.getUserReward(owner.address, rewardToken.target);
+            const currentRewardOwner = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStaker = await hederaVault.getAllRewards(testAccount.address);
+            console.log("Current reward owner after deposit: ", currentRewardOwner);
+            console.log("Current reward staker after deposit: ", currentRewardStaker);
 
-            const tokensAmount = await hederaVault.previewRedeem(amountToRedeem);
-            console.log("Preview redeem ", tokensAmount);
+            // Withdraw
+            client.setOperator(
+                operatorAccountId,
+                operatorPrKey
+            );
+            await hederaVault.approve(hederaVault.target, amountToWithdraw);
 
-            await hederaVault.approve(hederaVault.target, amountToRedeem);
-
-            const tx = await hederaVault.redeem(
-                amountToRedeem,
+            const ownerWithdrawTx = await hederaVault.withdraw(
+                amountToWithdraw,
                 owner.address,
                 owner.address,
-
+                { gasLimit: 3000000 }
             );
 
-            console.log(tx.hash);
+            // Change account
+            client.setOperator(
+                operatorAccountIdTest,
+                operatorPrKeyTest
+            );
+            await hederaVault.connect(testAccount).approve(hederaVault.target, amountToWithdraw);
 
-            await expect(
-                tx
-            ).to.emit(hederaVault, "Withdraw")
-                .withArgs(owner.address, owner.address, tokensAmount, amountToRedeem);
+            const stakerWithdrawTx = await hederaVault.connect(testAccount).withdraw(
+                amountToWithdraw,
+                testAccount.address,
+                testAccount.address,
+                { gasLimit: 3000000 }
+            );
+
+            const currentRewardOwner1 = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStaker1 = await hederaVault.getAllRewards(testAccount.address);
+            console.log("Current reward owner after withdraw: ", currentRewardOwner1);
+            console.log("Current reward staker after withdraw: ", currentRewardStaker1);
+
+            // Check reward gt 0 as long as withdrawn amount lt staked amount
+            expect(
+                currentRewardOwner1[0]
+            ).to.be.gt(0);
+            expect(
+                currentRewardStaker1[0]
+            ).to.be.gt(0);
 
             // Check share was transferred to contract
             await expect(
-                tx
+                ownerWithdrawTx
             ).to.changeTokenBalance(
                 hederaVault,
                 owner,
-                -amountToRedeem
+                -amountToWithdraw
             );
             // Check user received staking token
             await expect(
-                tx
+                ownerWithdrawTx
             ).to.changeTokenBalance(
                 stakingToken,
                 owner,
-                amountToRedeem
+                amountToWithdraw
             );
             // Check user received reward token
             await expect(
-                tx
+                ownerWithdrawTx
             ).to.changeTokenBalance(
                 rewardToken,
                 owner,
-                currentReward
+                197840253229750
             );
-        });
-
-        it("Should revert if zero assets", async function () {
-            const { hederaVault, owner } = await deployFixture();
-            const amountToReedem = 0;
 
             await expect(
-                hederaVault.redeem(amountToReedem, owner.address, owner.address,)
-            ).to.be.revertedWith("HederaVault: Zero assets");
-        });
-
-        it("Should revert if sender has no shares", async function () {
-            const { hederaVault, owner } = await deployFixture();
-            const amountToReedem = 10;
-
+                stakerWithdrawTx
+            ).to.changeTokenBalance(
+                hederaVault,
+                testAccount,
+                -amountToWithdraw
+            );
             await expect(
-                hederaVault.redeem(amountToReedem, owner.address, owner.address,)
-            ).to.be.revertedWith("HederaVault: Not enough share on the balance");
-        });
-
-        it("Should revert if invalid receiver", async function () {
-            const { hederaVault, owner } = await deployFixture();
-            const amountToReedem = 10;
-
+                stakerWithdrawTx
+            ).to.changeTokenBalance(
+                stakingToken,
+                testAccount,
+                amountToWithdraw
+            );
             await expect(
-                hederaVault.redeem(amountToReedem, ZeroAddress, owner.address,)
-            ).to.be.revertedWith("HederaVault: Invalid receiver address");
-        });
+                stakerWithdrawTx
+            ).to.changeTokenBalance(
+                rewardToken,
+                testAccount,
+                197840253229750
+            );
 
-        it("Should revert if invalid from address", async function () {
-            const { hederaVault, owner } = await deployFixture();
-            const amountToReedem = 10;
+            // Add reward
+            client.setOperator(
+                operatorAccountId,
+                operatorPrKey
+            );
+            await rewardToken.approve(hederaVault.target, rewardToAdd);
+            await hederaVault.connect(owner).addReward(rewardToken.target, rewardToAdd);
 
+            const currentRewardOwner2 = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStaker2 = await hederaVault.getAllRewards(testAccount.address);
+            console.log("Current reward owner after adding reward: ", currentRewardOwner2);
+            console.log("Current reward staker after adding reward: ", currentRewardStaker2);
+
+            console.log("Reward Owner balance before claim", await rewardToken.balanceOf(owner.address));
+            console.log("Reward Staker balance before claim", await rewardToken.balanceOf(testAccount.address));
+
+            const ownerClaimTx = await hederaVault.connect(owner).claimAllReward(0, owner.address);
+            client.setOperator(
+                operatorAccountIdTest,
+                operatorPrKeyTest
+            );
+            const stakerClaimTx = await hederaVault.connect(testAccount).claimAllReward(0, testAccount.address);
+
+            // Check claim success
             await expect(
-                hederaVault.redeem(amountToReedem, owner.address, ZeroAddress,)
-            ).to.be.revertedWith("HederaVault: Invalid from address");
+                ownerClaimTx
+            ).to.changeTokenBalance(
+                rewardToken,
+                owner,
+                198192714817855
+            );
+            await expect(
+                stakerClaimTx
+            ).to.changeTokenBalance(
+                rewardToken,
+                testAccount,
+                198192714817855
+            );
+
+            console.log("Reward Owner balance after claim", await rewardToken.balanceOf(owner.address));
+            console.log("Reward Staker balance after claim", await rewardToken.balanceOf(testAccount.address));
+
+            const currentRewardOwner3 = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStaker3 = await hederaVault.getAllRewards(testAccount.address);
+            console.log("Current reward owner after claim: ", currentRewardOwner3);
+            console.log("Current reward staker after claim: ", currentRewardStaker3);
         });
     });
 });

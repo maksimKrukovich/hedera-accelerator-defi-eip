@@ -11,6 +11,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IERC7540} from "../erc7540/interfaces/IERC7540.sol";
 
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
@@ -32,14 +33,14 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
     // Vault
     IERC4626 private immutable _vault;
 
+    // Cached vault type IERC4626/IERC7540
+    bool private immutable isAsync;
+
     // Underlying token
     address private immutable _underlying;
 
     // Uniswap V2 Router
     IUniswapV2Router02 private _uniswapV2Router;
-
-    // AutoCompounder token
-    address private _aToken;
 
     // USDC token
     address private _usdc;
@@ -66,8 +67,10 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         require(uniswapV2Router_ != address(0), "AutoCompounder: Invalid Uniswap Router address");
         require(vault_ != address(0), "AutoCompounder: Invalid Vault address");
         require(usdc_ != address(0), "AutoCompounder: Invalid USDC token address");
+
+        isAsync = ERC165Checker.supportsInterface(vault_, type(IERC7540).interfaceId);
         require(
-            ERC165Checker.supportsInterface(vault_, type(IERC4626).interfaceId),
+            isAsync || ERC165Checker.supportsInterface(vault_, type(IERC4626).interfaceId),
             "AutoCompounder: Unsupported vault interface ID"
         );
 
@@ -97,8 +100,12 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
 
         IERC20(asset()).safeTransferFrom(msg.sender, address(this), assets);
 
-        // Deposit underlying
         IERC20(asset()).approve(vault(), assets);
+
+        // Perform deposit request at first if it's ERC7540
+        if (isAsync) IERC7540(vault()).requestDeposit(assets, address(this), address(this));
+
+        // Deposit underlying
         _vault.deposit(assets, address(this));
 
         // Mint and transfer aToken

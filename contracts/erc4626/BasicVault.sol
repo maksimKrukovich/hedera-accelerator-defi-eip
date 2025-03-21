@@ -109,12 +109,14 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @return shares The amount of shares to receive.
      */
     function deposit(uint256 assets, address receiver) public override nonReentrant returns (uint256 shares) {
+        require(receiver != address(0), "HederaVault: Invalid receiver address");
+
         uint256 maxAssets = maxDeposit(receiver);
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
         }
 
-        shares = previewDeposit(assets);
+        require((shares = previewDeposit(assets)) != 0, "HederaVault: Zero shares");
         _deposit(_msgSender(), receiver, assets, shares);
 
         afterDeposit(assets, receiver);
@@ -128,12 +130,14 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @return assets The amount of tokens to receive.
      */
     function mint(uint256 shares, address receiver) public override nonReentrant returns (uint256 assets) {
+        require(receiver != address(0), "HederaVault: Invalid receiver address");
+
         uint256 maxShares = maxMint(receiver);
         if (shares > maxShares) {
             revert ERC4626ExceededMaxMint(receiver, shares, maxShares);
         }
 
-        assets = previewMint(shares);
+        require((assets = previewMint(shares)) != 0, "HederaVault: Zero shares");
         _deposit(_msgSender(), receiver, assets, shares);
 
         afterDeposit(assets, receiver);
@@ -152,6 +156,8 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
         address receiver,
         address owner
     ) public override nonReentrant returns (uint256 shares) {
+        require(receiver != address(0), "HederaVault: Invalid receiver address");
+
         uint256 maxAssets = maxWithdraw(owner);
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxWithdraw(owner, assets, maxAssets);
@@ -159,7 +165,7 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
 
         beforeWithdraw(assets, receiver);
 
-        shares = previewWithdraw(assets);
+        require((shares = previewWithdraw(assets)) != 0, "HederaVault: Zero shares");
         _withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
@@ -176,12 +182,16 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
         address receiver,
         address owner
     ) public override nonReentrant returns (uint256 assets) {
+        require(receiver != address(0), "HederaVault: Invalid receiver address");
+
         uint256 maxShares = maxRedeem(owner);
         if (shares > maxShares) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxShares);
         }
 
-        assets = previewRedeem(shares);
+        beforeWithdraw(assets, receiver);
+
+        require((assets = previewRedeem(shares)) != 0, "HederaVault: Zero assets");
         _withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
@@ -300,6 +310,9 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
 
         UserInfo storage cInfo = _userContribution[_user];
         uint256 userStakingTokenTotal = cInfo.sharesAmount;
+
+        if (userStakingTokenTotal == 0) return 0;
+
         uint256 perShareClaimedAmount = cInfo.lastClaimedAmountT[_rewardToken];
         uint256 perShareUnclaimedAmount = perShareAmount - perShareClaimedAmount;
 
@@ -307,12 +320,13 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
         unclaimedAmount = (perShareUnclaimedAmount * 1e18) / userStakingTokenTotal;
         unclaimedAmount = unclaimedAmount / 1e18;
 
+        // If reward less than 0 – apply min reward
+        if (unclaimedAmount == 0) unclaimedAmount = MIN_REWARD;
+
         if (feeConfig.feePercentage > 0) {
             uint256 currentFee = _calculateFee(unclaimedAmount, feeConfig.feePercentage);
             unclaimedAmount -= currentFee;
         }
-
-        if (unclaimedAmount == 0) unclaimedAmount = MIN_REWARD;
     }
 
     /**

@@ -119,24 +119,6 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
     event RewardAdded(address indexed rewardToken, uint256 amount);
 
     /**
-     * @notice The error is emitted when a user try to make a new redeem request
-     * but there is lack of shares.
-     */
-    error MaxRedeemRequestExceeded(address controller, uint256 shares, uint256 maxShares);
-
-    /**
-     * @notice The error is emitted when a user try to make a new deposit request
-     * and the deposited amount is grater than deposit limit.
-     */
-    error MaxDepositRequestExceeded(address controller, uint256 assets, uint256 maxDeposit);
-
-    /**
-     * @notice The error is emitted when a user try to make a new request
-     * on behalf of someone else.
-     */
-    error ERC7540CantRequestDepositOnBehalfOf();
-
-    /**
      * @notice The error is emitted when owner reaches the max reward tokens limit
      * during adding new one.
      */
@@ -321,10 +303,6 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
     function requestDeposit(uint256 assets, address operator, address owner) external override {
         require(assets != 0, "AsyncVault: Invalid asset amount");
         require(operator != address(0) && owner != address(0), "AsyncVault: Invalid owner address");
-
-        if (msg.sender != owner) {
-            revert ERC7540CantRequestDepositOnBehalfOf();
-        }
 
         if (assets > maxDepositRequest(owner)) {
             revert MaxDepositRequestExceeded(operator, assets, maxDepositRequest(owner));
@@ -561,20 +539,6 @@ contract AsyncVault is IERC7540, ERC20, FeeConfiguration, ReentrancyGuard, Ownab
      */
     function getRewardTokens() public view returns (address[] memory) {
         return rewardTokens;
-    }
-
-    /**
-     * @dev Returns Share token address.
-     */
-    function share() public view override returns (address) {
-        return _share;
-    }
-
-    /**
-     * @dev Returns Asset token address.
-     */
-    function asset() public view override returns (address) {
-        return address(_asset);
     }
 }
 
