@@ -1,9 +1,9 @@
 import { anyValue, ethers, expect, time } from "../setup";
 import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
-import hre from "hardhat";
 import { BigNumberish, Wallet, ZeroAddress } from "ethers";
 import { VaultToken, BasicVault } from "../../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import hre from "hardhat";
 
 async function deposit(vault: BasicVault, address: string, amount: BigNumberish, staker: Wallet | HardhatEthersSigner) {
     const token = await ethers.getContractAt(
@@ -40,7 +40,8 @@ const unlockDuration = 500;
 describe("BasicVault", function () {
     async function deployFixture() {
         const [
-            owner
+            owner,
+            staker
         ] = await ethers.getSigners();
 
         let client = Client.forTestnet();
@@ -55,7 +56,7 @@ describe("BasicVault", function () {
         ) as VaultToken;
         await stakingToken.waitForDeployment();
 
-        await stakingToken.mint(testAccount.address, ethers.parseUnits("500000000", 18));
+        await stakingToken.mint(staker.address, ethers.parseUnits("500000000", 18));
 
         const RewardToken = await ethers.getContractFactory("VaultToken");
         const rewardToken = await RewardToken.deploy(
@@ -81,6 +82,7 @@ describe("BasicVault", function () {
             stakingToken,
             client,
             owner,
+            staker,
             testAccount
         };
     }
@@ -279,98 +281,6 @@ describe("BasicVault", function () {
                 rewardToken,
                 owner,
                 currentReward
-            );
-        });
-
-        it("two people, two type of reward, one withdraw, add two reward, all claim", async function () {
-            const { hederaVault, owner, stakingToken, rewardToken, client, testAccount } = await deployFixture();
-            const amountToWithdraw = 10;
-            const amountToStake = 112412;
-            const rewardToAdd = ethers.parseUnits("5000000", 18);
-
-            const txd = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, owner);
-
-            console.log(txd.hash);
-
-            // Change account and deposit
-            client.setOperator(
-                operatorAccountIdTest,
-                operatorPrKeyTest
-            );
-            const txp = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, testAccount);
-
-            console.log(txp.hash);
-
-            // Change account and add reward
-            client.setOperator(
-                operatorAccountId,
-                operatorPrKey
-            );
-            await rewardToken.approve(hederaVault.target, rewardToAdd);
-
-            await hederaVault.connect(owner).addReward(rewardToken.target, rewardToAdd);
-
-            const currentRewardOwner = await hederaVault.getAllRewards(owner.address);
-            const currentRewardStaker = await hederaVault.getAllRewards(testAccountAddress);
-            console.log("Current reward owner: ", currentRewardOwner);
-            console.log("Current reward staker: ", currentRewardStaker);
-
-            await hederaVault.approve(hederaVault.target, amountToWithdraw);
-
-            // Warp time to unlock shares
-            await time.increase(1000);
-
-            const tx = await hederaVault.withdraw(
-                amountToWithdraw,
-                owner.address,
-                owner.address,
-                { gasLimit: 3000000 }
-            );
-
-            const currentRewardOwner1 = await hederaVault.getAllRewards(owner.address);
-            const currentRewardStaker2 = await hederaVault.getAllRewards(testAccountAddress);
-            console.log("Current reward owner: ", currentRewardOwner1);
-            console.log("Current reward staker: ", currentRewardStaker2);
-
-            await expect(
-                tx
-            ).to.emit(hederaVault, "Withdraw")
-                .withArgs(owner.address, owner.address, owner.address, amountToWithdraw, anyValue);
-
-            // Check share was transferred to contract
-            await expect(
-                tx
-            ).to.changeTokenBalance(
-                hederaVault,
-                owner,
-                -amountToWithdraw
-            );
-            // Check user received staking token
-            await expect(
-                tx
-            ).to.changeTokenBalance(
-                stakingToken,
-                owner,
-                amountToWithdraw
-            );
-
-            // Change account and claim reward
-            client.setOperator(
-                operatorAccountIdTest,
-                operatorPrKeyTest
-            );
-            const txClaim = await hederaVault.connect(testAccount).claimAllReward(0, testAccountAddress);
-
-            const currentRewardStaker3 = await hederaVault.getAllRewards(testAccountAddress);
-            console.log("Current reward staker: ", currentRewardStaker3);
-
-            // Check user claimed reward
-            await expect(
-                txClaim
-            ).to.changeTokenBalance(
-                rewardToken,
-                testAccountAddress,
-                197840253229750
             );
         });
 
@@ -677,41 +587,31 @@ describe("BasicVault", function () {
 
     describe("flow tests", function () {
         it("two people, two withdraw, add reward, all claim", async function () {
-            const { hederaVault, owner, testAccount, stakingToken, rewardToken, client } = await deployFixture();
+            const { hederaVault, owner, staker, stakingToken, rewardToken } = await deployFixture();
             const amountToWithdraw = 100;
             const amountToStake = 112412;
             const rewardToAdd = ethers.parseUnits("5000000", 18);
 
             // Stake
             const ownerDeposit = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, owner);
-            // Change account
-            client.setOperator(
-                operatorAccountIdTest,
-                operatorPrKeyTest
-            );
-            const stakerDeposit = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, testAccount);
+            const stakerDeposit = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, staker);
             console.log("Owner deposit: ", ownerDeposit.hash);
             console.log("Staker deposit: ", stakerDeposit.hash);
 
             // Add reward
-            client.setOperator(
-                operatorAccountId,
-                operatorPrKey
-            );
             await rewardToken.approve(hederaVault.target, rewardToAdd);
             await hederaVault.connect(owner).addReward(rewardToken.target, rewardToAdd);
 
             const currentRewardOwner = await hederaVault.getAllRewards(owner.address);
-            const currentRewardStaker = await hederaVault.getAllRewards(testAccount.address);
+            const currentRewardStaker = await hederaVault.getAllRewards(staker.address);
             console.log("Current reward owner after deposit: ", currentRewardOwner);
             console.log("Current reward staker after deposit: ", currentRewardStaker);
 
             // Withdraw
-            client.setOperator(
-                operatorAccountId,
-                operatorPrKey
-            );
             await hederaVault.approve(hederaVault.target, amountToWithdraw);
+
+            // Warp time to unlock rewards
+            await time.increase(1000);
 
             const ownerWithdrawTx = await hederaVault.withdraw(
                 amountToWithdraw,
@@ -720,22 +620,17 @@ describe("BasicVault", function () {
                 { gasLimit: 3000000 }
             );
 
-            // Change account
-            client.setOperator(
-                operatorAccountIdTest,
-                operatorPrKeyTest
-            );
-            await hederaVault.connect(testAccount).approve(hederaVault.target, amountToWithdraw);
+            await hederaVault.connect(staker).approve(hederaVault.target, amountToWithdraw);
 
-            const stakerWithdrawTx = await hederaVault.connect(testAccount).withdraw(
+            const stakerWithdrawTx = await hederaVault.connect(staker).withdraw(
                 amountToWithdraw,
-                testAccount.address,
-                testAccount.address,
+                staker.address,
+                staker.address,
                 { gasLimit: 3000000 }
             );
 
             const currentRewardOwner1 = await hederaVault.getAllRewards(owner.address);
-            const currentRewardStaker1 = await hederaVault.getAllRewards(testAccount.address);
+            const currentRewardStaker1 = await hederaVault.getAllRewards(staker.address);
             console.log("Current reward owner after withdraw: ", currentRewardOwner1);
             console.log("Current reward staker after withdraw: ", currentRewardStaker1);
 
@@ -776,46 +671,38 @@ describe("BasicVault", function () {
                 stakerWithdrawTx
             ).to.changeTokenBalance(
                 hederaVault,
-                testAccount,
+                staker,
                 -amountToWithdraw
             );
             await expect(
                 stakerWithdrawTx
             ).to.changeTokenBalance(
                 stakingToken,
-                testAccount,
+                staker,
                 amountToWithdraw
             );
             await expect(
                 stakerWithdrawTx
             ).to.changeTokenBalance(
                 rewardToken,
-                testAccount,
+                staker,
                 197840253229750
             );
 
             // Add reward
-            client.setOperator(
-                operatorAccountId,
-                operatorPrKey
-            );
             await rewardToken.approve(hederaVault.target, rewardToAdd);
             await hederaVault.connect(owner).addReward(rewardToken.target, rewardToAdd);
 
             const currentRewardOwner2 = await hederaVault.getAllRewards(owner.address);
-            const currentRewardStaker2 = await hederaVault.getAllRewards(testAccount.address);
+            const currentRewardStaker2 = await hederaVault.getAllRewards(staker.address);
             console.log("Current reward owner after adding reward: ", currentRewardOwner2);
             console.log("Current reward staker after adding reward: ", currentRewardStaker2);
 
             console.log("Reward Owner balance before claim", await rewardToken.balanceOf(owner.address));
-            console.log("Reward Staker balance before claim", await rewardToken.balanceOf(testAccount.address));
+            console.log("Reward Staker balance before claim", await rewardToken.balanceOf(staker.address));
 
             const ownerClaimTx = await hederaVault.connect(owner).claimAllReward(0, owner.address);
-            client.setOperator(
-                operatorAccountIdTest,
-                operatorPrKeyTest
-            );
-            const stakerClaimTx = await hederaVault.connect(testAccount).claimAllReward(0, testAccount.address);
+            const stakerClaimTx = await hederaVault.connect(staker).claimAllReward(0, staker.address);
 
             // Check claim success
             await expect(
@@ -829,17 +716,93 @@ describe("BasicVault", function () {
                 stakerClaimTx
             ).to.changeTokenBalance(
                 rewardToken,
-                testAccount,
+                staker,
                 198192714817855
             );
 
             console.log("Reward Owner balance after claim", await rewardToken.balanceOf(owner.address));
-            console.log("Reward Staker balance after claim", await rewardToken.balanceOf(testAccount.address));
+            console.log("Reward Staker balance after claim", await rewardToken.balanceOf(staker.address));
 
             const currentRewardOwner3 = await hederaVault.getAllRewards(owner.address);
-            const currentRewardStaker3 = await hederaVault.getAllRewards(testAccount.address);
+            const currentRewardStaker3 = await hederaVault.getAllRewards(staker.address);
             console.log("Current reward owner after claim: ", currentRewardOwner3);
             console.log("Current reward staker after claim: ", currentRewardStaker3);
+        });
+
+        it("two people, two type of reward, one withdraw, add two reward, all claim", async function () {
+            const { hederaVault, owner, staker, stakingToken, rewardToken } = await deployFixture();
+            const amountToWithdraw = 10;
+            const amountToStake = 112412;
+            const rewardToAdd = ethers.parseUnits("5000000", 18);
+
+            // Deposit
+            const ownerDeposit = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, owner);
+            const stakerDeposit = await deposit(hederaVault, await stakingToken.getAddress(), amountToStake, staker);
+            console.log(ownerDeposit.hash);
+            console.log(stakerDeposit.hash);
+
+            await rewardToken.approve(hederaVault.target, rewardToAdd);
+
+            await hederaVault.connect(owner).addReward(rewardToken.target, rewardToAdd);
+
+            const currentRewardOwner = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStaker = await hederaVault.getAllRewards(staker);
+            console.log("Current reward owner: ", currentRewardOwner);
+            console.log("Current reward staker: ", currentRewardStaker);
+
+            await hederaVault.approve(hederaVault.target, amountToWithdraw);
+
+            // Warp time to unlock shares
+            await time.increase(1000);
+
+            const tx = await hederaVault.withdraw(
+                amountToWithdraw,
+                owner.address,
+                owner.address,
+                { gasLimit: 3000000 }
+            );
+
+            const currentRewardOwner1 = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStaker2 = await hederaVault.getAllRewards(staker.address);
+            console.log("Current reward owner: ", currentRewardOwner1);
+            console.log("Current reward staker: ", currentRewardStaker2);
+
+            await expect(
+                tx
+            ).to.emit(hederaVault, "Withdraw")
+                .withArgs(owner.address, owner.address, owner.address, amountToWithdraw, anyValue);
+
+            // Check share was transferred to contract
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                hederaVault,
+                owner,
+                -amountToWithdraw
+            );
+            // Check user received staking token
+            await expect(
+                tx
+            ).to.changeTokenBalance(
+                stakingToken,
+                owner,
+                amountToWithdraw
+            );
+
+            // Claim
+            const txClaim = await hederaVault.connect(staker).claimAllReward(0, staker.address);
+
+            const currentRewardStaker3 = await hederaVault.getAllRewards(staker);
+            console.log("Current reward staker: ", currentRewardStaker3);
+
+            // Check user claimed reward
+            await expect(
+                txClaim
+            ).to.changeTokenBalance(
+                rewardToken,
+                staker.address,
+                197840253229750
+            );
         });
     });
 });

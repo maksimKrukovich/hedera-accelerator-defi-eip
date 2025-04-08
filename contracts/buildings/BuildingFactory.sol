@@ -19,7 +19,7 @@ import {ITreasury} from "../treasury/interfaces/ITreasury.sol";
 
 /**
  * @title BuildingFactory
- * @author Hashgraph 
+ * @author Hashgraph
  */
 contract BuildingFactory is BuildingFactoryStorage, Initializable {
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -67,7 +67,10 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
      */
     modifier onlyBuildingOwner(address building) {
         BuildingFactoryStorageData storage $ = _getBuildingFactoryStorage();
-        require(building != address(0) && $.buildingDetails[building].addr != address(0), "BuildingFactory: Invalid building address");
+        require(
+            building != address(0) && $.buildingDetails[building].addr != address(0),
+            "BuildingFactory: Invalid building address"
+        );
         require(OwnableUpgradeable(building).owner() == msg.sender, "BuildingFactory: Not building owner");
         _;
     }
@@ -82,7 +85,7 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
 
     /**
      * getBuildingDetails get details of building
-     * @param buildingAddress address of the building contract 
+     * @param buildingAddress address of the building contract
      */
     function getBuildingDetails(address buildingAddress) public view returns (BuildingInfo memory) {
         BuildingFactoryStorageData storage $ = _getBuildingFactoryStorage();
@@ -114,7 +117,7 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
             address(0) // governance lazy deploy
         );
 
-        $.buildingsList.push($.buildingDetails[address(buildingProxy)]);        
+        $.buildingsList.push($.buildingDetails[address(buildingProxy)]);
 
         emit NewBuilding(address(buildingProxy), msg.sender);
     }
@@ -126,12 +129,23 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
      * @param symbol string symbol of the token
      * @param decimals uint8 token decimals
      */
-    function newERC3643Token(address building, string memory name, string memory symbol, uint8 decimals) external onlyBuildingOwner(building) {
+    function newERC3643Token(
+        address building,
+        string memory name,
+        string memory symbol,
+        uint8 decimals
+    ) external onlyBuildingOwner(building) {
         BuildingFactoryStorageData storage $ = _getBuildingFactoryStorage();
 
-        require(building != address(0) && $.buildingDetails[building].addr != address(0), "BuildingFactory: Invalid building address");
-        require($.buildingDetails[building].erc3643Token == address(0), "BuildingFactory: token already created for building");
-        
+        require(
+            building != address(0) && $.buildingDetails[building].addr != address(0),
+            "BuildingFactory: Invalid building address"
+        );
+        require(
+            $.buildingDetails[building].erc3643Token == address(0),
+            "BuildingFactory: token already created for building"
+        );
+
         address token = BuildingToken.createERC3643Token($.trexGateway, building, name, symbol, decimals);
 
         OwnableUpgradeable(token).transferOwnership(msg.sender);
@@ -146,19 +160,26 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
      * @param building address of building
      * @param token address of token
      */
-    function newTreasury(address building, address token, uint256 reserveAmount, uint256 nPercentage) external onlyBuildingOwner(building) {
+    function newTreasury(
+        address building,
+        address token,
+        uint256 reserveAmount,
+        uint256 nPercentage,
+        uint32 cliff,
+        uint32 unlockDuration
+    ) external onlyBuildingOwner(building) {
         BuildingFactoryStorageData storage $ = _getBuildingFactoryStorage();
 
         require(
             token != address(0) && $.buildingDetails[building].erc3643Token != address(0),
             "BuildingFactory: Invalid token address"
         );
-        
-        address treasury = _deployTreasury(reserveAmount, nPercentage, msg.sender);        
-        address vault = _deployVault(token, msg.sender, treasury);
+
+        address treasury = _deployTreasury(reserveAmount, nPercentage, msg.sender);
+        address vault = _deployVault(token, msg.sender, treasury, cliff, unlockDuration);
 
         ITreasury(treasury).addVault(vault);
-        
+
         $.buildingDetails[building].treasury = treasury;
         emit NewTreasury(treasury, building, msg.sender);
     }
@@ -170,7 +191,12 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
      * @param token token address ( needs to be voting token )
      * @param treasury treasury address
      */
-    function newGovernance(address building, string memory name,  address token, address treasury) external onlyBuildingOwner(building) {
+    function newGovernance(
+        address building,
+        string memory name,
+        address token,
+        address treasury
+    ) external onlyBuildingOwner(building) {
         BuildingFactoryStorageData storage $ = _getBuildingFactoryStorage();
 
         require(
@@ -183,12 +209,12 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
             "BuildingFactory: Invalid treasury address"
         );
 
-        address governance = _deployGovernance(token, name, treasury, msg.sender); 
+        address governance = _deployGovernance(token, name, treasury, msg.sender);
 
         $.buildingDetails[building].governance = governance;
 
         ITreasury(treasury).grantGovernanceRole(governance);
-        
+
         emit NewGovernance(governance, building, msg.sender);
     }
 
@@ -196,12 +222,18 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
      * Deploy new vault
      * @param token address of the token
      */
-    function _deployVault(address token, address initialOwner, address vaultRewardController) private  returns (address){
+    function _deployVault(
+        address token,
+        address initialOwner,
+        address vaultRewardController,
+        uint32 cliff,
+        uint32 unlockDuration
+    ) private returns (address) {
         BuildingFactoryStorageData storage $ = _getBuildingFactoryStorage();
-        
+
         // increment vault nonce to create salt
         $.vaultNonce++;
-    
+
         string memory salt = IVaultFactory($.vaultFactory).generateSalt(initialOwner, token, $.vaultNonce);
         string memory tokenName = IERC20Metadata(token).name();
         string memory tokenSymbol = IERC20Metadata(token).symbol();
@@ -211,7 +243,9 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
             tokenName, // string shareTokenName;
             tokenSymbol, // string shareTokenSymbol;
             vaultRewardController, // address vaultRewardController;
-            initialOwner // address feeConfigController;
+            initialOwner, // address feeConfigController;
+            cliff, // uint32 cliff;
+            unlockDuration // uint32 unlockDuration;
         );
 
         FeeConfiguration.FeeConfig memory feeConfig = FeeConfiguration.FeeConfig(
@@ -229,15 +263,27 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
      * @param nPercentage  n parcentage
      * @param initialOwner initial owner
      */
-    function _deployTreasury(uint256 reserveAmount, uint256 nPercentage, address initialOwner) private returns (address) {
+    function _deployTreasury(
+        uint256 reserveAmount,
+        uint256 nPercentage,
+        address initialOwner
+    ) private returns (address) {
         BuildingFactoryStorageData storage $ = _getBuildingFactoryStorage();
-        
+
         // initial owner as business address
         address businessAddress = initialOwner;
 
         BeaconProxy treasuryProxy = new BeaconProxy(
             $.treasuryBeacon,
-            abi.encodeWithSelector(Treasury.initialize.selector, $.usdc, reserveAmount, nPercentage, initialOwner, businessAddress, address(this))
+            abi.encodeWithSelector(
+                Treasury.initialize.selector,
+                $.usdc,
+                reserveAmount,
+                nPercentage,
+                initialOwner,
+                businessAddress,
+                address(this)
+            )
         );
 
         return address(treasuryProxy);
@@ -250,7 +296,12 @@ contract BuildingFactory is BuildingFactoryStorage, Initializable {
      * @param initialOwner initial owner
      * @param treasury treasury contract address
      */
-    function _deployGovernance(address token, string memory name, address treasury, address initialOwner) private returns (address){
+    function _deployGovernance(
+        address token,
+        string memory name,
+        address treasury,
+        address initialOwner
+    ) private returns (address) {
         BuildingFactoryStorageData storage $ = _getBuildingFactoryStorage();
 
         BeaconProxy governanceProxy = new BeaconProxy(
