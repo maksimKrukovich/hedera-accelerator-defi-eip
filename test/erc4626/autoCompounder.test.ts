@@ -1,14 +1,13 @@
-import { anyValue, ethers, expect } from "../setup";
+import { anyValue, ethers, expect, time } from "../setup";
 import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
 import { ZeroAddress } from "ethers";
-import { VaultToken, BasicVault, AsyncVault, AutoCompounder } from "../../typechain-types";
+import { VaultToken, BasicVault, AsyncVault, AutoCompounder, UniswapRouterMock } from "../../typechain-types";
 import hre from "hardhat";
 
-import {
-    usdcAddress,
-    uniswapRouterAddress,
-    uniswapFactoryAddress
-} from "../../constants";
+import factoryAbi from "@uniswap/v2-core/build/UniswapV2Factory.json";
+import routerAbi from "@uniswap/v2-periphery/build/UniswapV2Router02.json";
+import wethAbi from "@uniswap/v2-periphery/build/WETH9.json";
+
 import { VaultType, deployBasicVault, deployAsyncVault } from "./helper";
 
 // constants
@@ -28,11 +27,15 @@ const feeConfig = {
     feePercentage: 0,
 };
 
+const unlockDuration1 = 300;
+const unlockDuration2 = 500;
+
 // Tests
 describe("AutoCompounder", function () {
     async function deployFixture(vaultType: VaultType) {
         const [
             owner,
+            staker
         ] = await ethers.getSigners();
 
         let client = Client.forTestnet();
@@ -45,6 +48,25 @@ describe("AutoCompounder", function () {
             operatorPrKey
         );
 
+        // Uniswap
+        const UniswapV2Factory = await ethers.getContractFactory(factoryAbi.abi, factoryAbi.bytecode, owner);
+        const uniswapV2Factory = await UniswapV2Factory.deploy(
+            owner.address,
+        );
+        await uniswapV2Factory.waitForDeployment();
+
+        const WETH = await ethers.getContractFactory(wethAbi.abi, wethAbi.bytecode, owner);
+        const weth = await WETH.deploy();
+        await weth.waitForDeployment();
+
+        const UniswapV2Router02 = await ethers.getContractFactory(routerAbi.abi, routerAbi.bytecode, owner);
+        const uniswapV2Router02 = await UniswapV2Router02.deploy(
+            uniswapV2Factory.target,
+            weth.target
+        ) as UniswapRouterMock;
+        await uniswapV2Router02.waitForDeployment();
+
+        // Vault
         const VaultToken = await ethers.getContractFactory("VaultToken");
         const stakingToken = await VaultToken.deploy(
         ) as VaultToken;
@@ -59,24 +81,26 @@ describe("AutoCompounder", function () {
 
         let vault;
         if (vaultType === VaultType.Basic) {
-            vault = await deployBasicVault(stakingToken, owner, feeConfig) as BasicVault;
+            vault = await deployBasicVault(stakingToken, owner, feeConfig, unlockDuration1) as BasicVault;
         } else {
-            vault = await deployAsyncVault(stakingToken, owner, feeConfig) as AsyncVault;
+            vault = await deployAsyncVault(stakingToken, owner, feeConfig, unlockDuration2) as AsyncVault;
         }
 
         const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
         const autoCompounder = await AutoCompounder.deploy(
-            uniswapRouterAddress,
+            uniswapV2Router02,
             vault.target,
             rewardToken.target, // TODO: change to real USDC
             "TST",
-            "TST"
+            "TST",
+            owner.address
         ) as AutoCompounder;
         await autoCompounder.waitForDeployment();
 
         return {
             autoCompounder,
             vault,
+            uniswapV2Router02,
             stakingToken,
             rewardToken,
             client,
@@ -214,6 +238,9 @@ describe("AutoCompounder", function () {
             const exchangeRate = await autoCompounder.exchangeRate();
             const withdrawnUnderlyingAmount = exchangeRate * amountToWithdraw;
 
+            // Warp time
+            await time.increase(1000);
+
             const tx = await autoCompounder.withdraw(
                 amountToWithdraw,
                 owner.address,
@@ -268,6 +295,11 @@ describe("AutoCompounder", function () {
 
             const exchangeRate = await autoCompounder.exchangeRate();
             const withdrawnUnderlyingAmount = exchangeRate * amountToWithdraw;
+
+            // Warp time
+            await time.increase(1000);
+
+            await vault.requestRedeem(amountToWithdraw, autoCompounder.target, autoCompounder.target);
 
             const tx = await autoCompounder.withdraw(
                 amountToWithdraw,
@@ -326,35 +358,19 @@ describe("AutoCompounder", function () {
     });
 
     describe("claim", function () {
-        it.only("Should claim reward and reinvest", async function () {
-            const { autoCompounder, vault, stakingToken, rewardToken, owner } = await deployFixture(VaultType.Basic);
+        it("Should claim reward and reinvest", async function () {
+            const { autoCompounder, vault, uniswapV2Router02, stakingToken, rewardToken, owner } = await deployFixture(VaultType.Basic);
             const amountToDeposit = 112412;
             const rewardAmount = ethers.parseUnits("5000000", 18);
-
-            const uniswapRouter = await ethers.getContractAt(
-                "contracts/erc4626/interfaces/IUniswapV2Router02.sol:IUniswapV2Router02",
-                uniswapRouterAddress
-            );
-            const uniswapFactory = await ethers.getContractAt(
-                "contracts/erc4626/interfaces/IUniswapV2Factory.sol:IUniswapV2Factory",
-                uniswapFactoryAddress
-            );
 
             const latestBlock = await ethers.provider.getBlock("latest");
             const timestamp = latestBlock?.timestamp;
 
-            // Create Pair
-            await uniswapFactory.createPair(
-                rewardToken.target,
-                stakingToken.target,
-                { gasLimit: 3000000 }
-            );
-
             // Add Liquidity
-            await rewardToken.approve(uniswapRouter, ethers.parseUnits("5000000", 18));
-            await stakingToken.approve(uniswapRouter, ethers.parseUnits("5000000", 18));
+            await rewardToken.approve(uniswapV2Router02.target, ethers.parseUnits("5000000", 18));
+            await stakingToken.approve(uniswapV2Router02.target, ethers.parseUnits("5000000", 18));
 
-            const addLiquidityTx = await uniswapRouter.addLiquidity(
+            const addLiquidityTx = await uniswapV2Router02.addLiquidity(
                 rewardToken.target,
                 stakingToken.target,
                 ethers.parseUnits("5000000", 18),

@@ -28,6 +28,8 @@ interface IVaultFactory {
         string shareTokenSymbol;
         address vaultRewardController;
         address feeConfigController;
+        uint32 cliff;
+        uint32 unlockDuration;
     }
 
     /**
@@ -50,9 +52,5 @@ interface IVaultFactory {
      * @param token address
      * @param nonce uint256
      */
-    function generateSalt(
-        address deployer,
-        address token,
-        uint256 nonce
-    ) external pure returns (string memory);
+    function generateSalt(address deployer, address token, uint256 nonce) external pure returns (string memory);
 }

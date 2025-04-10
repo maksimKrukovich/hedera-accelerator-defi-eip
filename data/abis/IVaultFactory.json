@@ -67,6 +67,16 @@
               "internalType": "address",
               "name": "feeConfigController",
               "type": "address"
+            },
+            {
+              "internalType": "uint32",
+              "name": "cliff",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "unlockDuration",
+              "type": "uint32"
             }
           ],
           "internalType": "struct IVaultFactory.VaultDetails",
