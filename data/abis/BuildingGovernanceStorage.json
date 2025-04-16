@@ -8,24 +8,36 @@
       "inputs": [
         {
           "indexed": false,
-          "internalType": "enum BuildingGovernanceStorage.ProposalType",
-          "name": "proposalType",
-          "type": "uint8"
-        },
-        {
-          "indexed": false,
           "internalType": "uint256",
           "name": "id",
           "type": "uint256"
         },
         {
           "indexed": false,
+          "internalType": "enum BuildingGovernanceStorage.ProposalType",
+          "name": "proposalType",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
           "internalType": "address",
           "name": "proposer",
           "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "receiver",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
         }
       ],
-      "name": "ProposalCreated",
+      "name": "ProposalDefined",
       "type": "event"
     }
   ],

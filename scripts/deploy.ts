@@ -1,7 +1,6 @@
 import { ethers, upgrades } from 'hardhat';
 import { writeFile } from 'fs/promises';
-import { createFungibleToken } from "../scripts/utils";
-import { Client, AccountId, PrivateKey } from "@hashgraph/sdk";
+import { ZeroAddress } from 'ethers';
 import TestnetDeployments from '../data/deployments/chain-296.json';
 
 import {
@@ -129,62 +128,39 @@ async function deployComplianceModules(contracts: Record<string, any>): Promise<
 
 // Deploy Vault contracts
 async function deployVault(contracts: Record<string, any>): Promise<Record<string, any>> {
+  console.log(' - Deploying Vault...');
   const [deployer] = await ethers.getSigners();
-  const network = await ethers.provider.getNetwork();
 
-  console.log("Deploying Vault with account:", deployer.address, "at:", network.name);
+  const VaultToken = await ethers.getContractFactory("VaultToken");
 
-  let client = Client.forTestnet();
+  const stakingToken = await VaultToken.deploy();
+  await stakingToken.waitForDeployment();
 
-  const operatorPrKey = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY || '');
-  const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
-
-  client.setOperator(
-    operatorAccountId,
-    operatorPrKey
-  );
-
-  const stakingToken = await createFungibleToken(
-    "ERC4626 on Hedera",
-    "HERC4626",
-    process.env.ACCOUNT_ID,
-    operatorPrKey.publicKey,
-    client,
-    operatorPrKey
-  );
-
-  const stakingTokenAddress = "0x" + stakingToken!.toSolidityAddress();
-
-  const rewardToken = await createFungibleToken(
-    "Reward Token 1",
-    "RT1",
-    process.env.ACCOUNT_ID,
-    operatorPrKey.publicKey,
-    client,
-    operatorPrKey
-  );
+  const rewardToken = await VaultToken.deploy();
+  await stakingToken.waitForDeployment();
 
   const feeConfig = {
-    receiver: "0x091b4a7ea614a3bd536f9b62ad5641829a1b174f",
-    token: "0x" + rewardToken!.toSolidityAddress(),
-    minAmount: 0,
-    feePercentage: 1000,
+    receiver: ZeroAddress,
+    token: ZeroAddress,
+    feePercentage: 0,
   };
 
-  const HederaVault = await ethers.getContractFactory("HederaVault");
-  const hederaVault = await HederaVault.deploy(
-    stakingTokenAddress,
+  const BasicVault = await ethers.getContractFactory("BasicVault");
+  const vault = await BasicVault.deploy(
+    stakingToken.target,
     "TST",
     "TST",
     feeConfig,
     deployer.address,
     deployer.address,
-    { from: deployer.address, gasLimit: 3000000, value: ethers.parseUnits("16", 18) }
+    100,
+    500,
+    { from: deployer.address, gasLimit: 3000000 }
   );
-  console.log("Hash ", hederaVault.deploymentTransaction()?.hash);
-  await hederaVault.waitForDeployment();
+  console.log("Hash ", vault.deploymentTransaction()?.hash);
+  await vault.waitForDeployment();
 
-  console.log("Vault deployed with address: ", await hederaVault.getAddress());
+  console.log("Vault deployed with address: ", await vault.getAddress());
 
   const VaultFactory = await ethers.getContractFactory("VaultFactory");
   const vaultFactory = await VaultFactory.deploy({ from: deployer.address });
@@ -196,68 +172,44 @@ async function deployVault(contracts: Record<string, any>): Promise<Record<strin
   return {
     ...contracts,
     vault: {
-      Vault: hederaVault.target,
+      Vault: vault.target,
       VaultFactory: vaultFactory.target,
-      StakingToken: stakingTokenAddress,
-      Share: await hederaVault.share(),
-      RewardToken: "0x" + rewardToken!.toSolidityAddress()
+      StakingToken: stakingToken.target,
+      RewardToken: rewardToken.target
     }
   };
 }
 
 // Deploy Async Vault contracts
 async function deployAsyncVault(contracts: Record<string, any>): Promise<Record<string, any>> {
+  console.log(' - Deploying Async Vault...');
   const [deployer] = await ethers.getSigners();
-  const network = await ethers.provider.getNetwork();
 
-  console.log("Deploying Async Vault with account:", deployer.address, "at:", network.name);
+  const VaultToken = await ethers.getContractFactory("VaultToken");
 
-  let client = Client.forTestnet();
+  const stakingToken = await VaultToken.deploy();
+  await stakingToken.waitForDeployment();
 
-  const operatorPrKey = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY || '');
-  const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
-
-  client.setOperator(
-    operatorAccountId,
-    operatorPrKey
-  );
-
-  const stakingToken = await createFungibleToken(
-    "ERC7540 on Hedera",
-    "HERC7540",
-    process.env.ACCOUNT_ID,
-    operatorPrKey.publicKey,
-    client,
-    operatorPrKey
-  );
-
-  const stakingTokenAddress = "0x" + stakingToken!.toSolidityAddress();
-
-  const rewardToken = await createFungibleToken(
-    "Reward Token 1",
-    "RT1",
-    process.env.ACCOUNT_ID,
-    operatorPrKey.publicKey,
-    client,
-    operatorPrKey
-  );
+  const rewardToken = await VaultToken.deploy();
+  await stakingToken.waitForDeployment();
 
   const feeConfig = {
-    receiver: "0x091b4a7ea614a3bd536f9b62ad5641829a1b174f",
-    token: "0x" + rewardToken!.toSolidityAddress(),
-    minAmount: 0,
-    feePercentage: 1000,
+    receiver: ZeroAddress,
+    token: ZeroAddress,
+    feePercentage: 0,
   };
 
   const AsyncVault = await ethers.getContractFactory("AsyncVault");
   const asyncVault = await AsyncVault.deploy(
-    stakingTokenAddress,
+    stakingToken.target,
     "TST",
     "TST",
     feeConfig,
     deployer.address,
     deployer.address,
-    { from: deployer.address, gasLimit: 3000000, value: ethers.parseUnits("20", 18) }
+    100,
+    500,
+    { from: deployer.address, gasLimit: 4000000 }
   );
   console.log("Hash ", asyncVault.deploymentTransaction()?.hash);
   await asyncVault.waitForDeployment();
@@ -268,15 +220,36 @@ async function deployAsyncVault(contracts: Record<string, any>): Promise<Record<
     ...contracts,
     asyncVault: {
       Vault: asyncVault.target,
-      StakingToken: stakingTokenAddress,
-      Share: asyncVault.target,
-      RewardToken: "0x" + rewardToken!.toSolidityAddress()
+      StakingToken: stakingToken.target,
+      RewardToken: rewardToken.target
+    }
+  };
+}
+
+// Deploy Async Vault Factory
+async function deployAsyncVaultFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
+  console.log(' - Deploying Async Vault Factory...');
+  const [deployer] = await ethers.getSigners();
+
+  const AsyncVaultFactory = await ethers.getContractFactory("AsyncVaultFactory");
+  const asyncVaultFactory = await AsyncVaultFactory.deploy(
+    { from: deployer.address, gasLimit: 40000000 }
+  );
+  await asyncVaultFactory.waitForDeployment();
+
+  console.log("Async Vault Factory deployed with address: ", await asyncVaultFactory.getAddress());
+
+  return {
+    ...contracts,
+    asyncVault: {
+      AsyncVaultFactory: asyncVaultFactory.target
     }
   };
 }
 
 // Deploy Slice
 async function deploySlice(contracts: Record<string, any>): Promise<Record<string, any>> {
+  console.log(' - Deploying Slice...');
   const [deployer] = await ethers.getSigners();
 
   const Slice = await ethers.getContractFactory("Slice");
@@ -289,26 +262,58 @@ async function deploySlice(contracts: Record<string, any>): Promise<Record<strin
   );
   await slice.waitForDeployment();
 
+  const SliceFactory = await ethers.getContractFactory("SliceFactory");
+  const sliceFactory = await SliceFactory.deploy();
+  await slice.waitForDeployment();
+
   return {
     ...contracts,
-    balancer: {
-      Slice: slice.target
+    slice: {
+      Slice: slice.target,
+      SliceFactory: sliceFactory.target
     }
   };
 }
 
 // Deploy AutoCompounder
 async function deployAutoCompounder(contracts: Record<string, any>): Promise<Record<string, any>> {
+  console.log(' - Deploying AutoCompounder...');
   const [deployer] = await ethers.getSigners();
 
-  const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
+  const VaultToken = await ethers.getContractFactory("VaultToken");
 
+  const stakingToken = await VaultToken.deploy();
+  await stakingToken.waitForDeployment();
+
+  const feeConfig = {
+    receiver: ZeroAddress,
+    token: ZeroAddress,
+    feePercentage: 0,
+  };
+
+  const BasicVault = await ethers.getContractFactory("BasicVault");
+  const vault = await BasicVault.deploy(
+    stakingToken.target,
+    "TST",
+    "TST",
+    feeConfig,
+    deployer.address,
+    deployer.address,
+    100,
+    500,
+    { from: deployer.address, gasLimit: 3000000 }
+  );
+  console.log("Hash ", vault.deploymentTransaction()?.hash);
+  await vault.waitForDeployment();
+
+  const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
   const autoCompounder = await AutoCompounder.deploy(
     uniswapRouterAddress,
-    "0x0000000000000000000000000000000000423255",
+    vault.target,
     usdcAddress,
     "AToken",
-    "AToken"
+    "AToken",
+    ZeroAddress
   );
   await autoCompounder.waitForDeployment();
 
@@ -320,8 +325,9 @@ async function deployAutoCompounder(contracts: Record<string, any>): Promise<Rec
   };
 }
 
-// Deploy AutoCompounder
+// Deploy AutoCompounder Factory
 async function deployAutoCompounderFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
+  console.log(' - Deploying AutoCompounder Factory...');
   const [deployer] = await ethers.getSigners();
 
   const AutoCompounderFactory = await ethers.getContractFactory("AutoCompounderFactory");
@@ -457,7 +463,7 @@ async function deployAudit(contracts: Record<string, any>): Promise<Record<strin
   const auditRegistry = await AuditRegistry.deploy();
   await auditRegistry.waitForDeployment();
   const auditRegistryAddress = await auditRegistry.getAddress();
-  
+
   return {
     ...contracts,
     implementations: {
@@ -467,7 +473,7 @@ async function deployAudit(contracts: Record<string, any>): Promise<Record<strin
   }
 }
 
-async function deployExchange(contracts: Record<string, any>): Promise<Record<string, any>>{
+async function deployExchange(contracts: Record<string, any>): Promise<Record<string, any>> {
   const oneSidedExchangeImplementation = await ethers.deployContract('OneSidedExchange');
   const exchangeAddress = await oneSidedExchangeImplementation.getAddress();
 
@@ -508,6 +514,8 @@ init()
   .then(deployERC3643)
   .then(deployComplianceModules)
   .then(deployVault)
+  .then(deployAsyncVault)
+  .then(deployAsyncVaultFactory)
   .then(deploySlice)
   .then(deployAutoCompounder)
   .then(deployAutoCompounderFactory)
