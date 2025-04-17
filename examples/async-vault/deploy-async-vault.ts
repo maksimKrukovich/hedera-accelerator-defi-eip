@@ -12,6 +12,8 @@ const unlockDuration = 500;
 const assetsAmount = ethers.parseUnits("10", 18);
 const rewardAmount = ethers.parseUnits("50", 18);
 
+const initialRewardToMint = ethers.parseUnits("500000000", 18);
+
 const feeConfig = {
     receiver: ZeroAddress,
     token: ZeroAddress,
@@ -22,6 +24,7 @@ export async function deployAsyncVault(): Promise<string> {
     const [owner] = await ethers.getSigners();
 
     const rewardToken = await ethers.getContractAt("VaultToken", Deployments.vault.RewardToken);
+    await rewardToken.mint(owner.address, initialRewardToMint);
 
     const VaultToken = await ethers.getContractFactory("VaultToken");
     const stakingToken = await VaultToken.deploy();
