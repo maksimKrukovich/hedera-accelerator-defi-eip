@@ -4,10 +4,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { LogDescription } from 'ethers';
 import Deployments from '../../data/deployments/chain-296.json';
 
-const salt = `0x${uuidv4().replace(/-/g, '')}`; // generate salt
-
 const cliff = 30;
 const unlockDuration = 60;
+
+const assetsAmount = ethers.parseUnits("10", 18);
+const rewardAmount = ethers.parseUnits("50", 18);
 
 const feeConfig = {
     receiver: ZeroAddress,
@@ -17,6 +18,10 @@ const feeConfig = {
 
 export async function deployVault(): Promise<string> {
     const [owner] = await ethers.getSigners();
+
+    const salt = `0x${uuidv4().replace(/-/g, '')}`; // generate salt
+
+    const rewardToken = await ethers.getContractAt("VaultToken", Deployments.vault.RewardToken);
 
     const VaultToken = await ethers.getContractFactory("VaultToken");
     const stakingToken = await VaultToken.deploy();
@@ -55,6 +60,16 @@ export async function deployVault(): Promise<string> {
     const newVaultAddress = decodedEvent.args[0];
 
     console.log(`Vault deployed at address: ${newVaultAddress}, tx: ${tx.hash}`);
+
+    const vault = await ethers.getContractAt("BasicVault", newVaultAddress);
+
+    // Deposit
+    const depositTx = await vault.deposit(assetsAmount, owner.address);
+    console.log(`Deposit to vault ${depositTx.hash}`);
+
+    // Add initial reward
+    const addRewardTx = await vault.addReward(rewardToken.target, rewardAmount);
+    console.log(`Reward added to vault ${addRewardTx.hash}`);
 
     return newVaultAddress;
 }

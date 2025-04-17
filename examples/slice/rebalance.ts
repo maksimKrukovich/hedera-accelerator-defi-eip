@@ -52,17 +52,17 @@ export async function rebalance() {
         { from: owner.address, gasLimit: 3000000 }
     );
 
-    console.log("Add Liquidity Tx1: ", addLiquidityTx1.hash);
-    console.log("Add Liquidity Tx2: ", addLiquidityTx2.hash);
+    console.log(`Add Liquidity Tx1: ${addLiquidityTx1.hash}`);
+    console.log(`Add Liquidity Tx2: ${addLiquidityTx2.hash}`);
 
     // Deposit to Slice
     await stakingTokens[0].approve(slice.target, amountToDeposit);
     await stakingTokens[1].approve(slice.target, amountToDeposit);
 
     const depositAutoCompounderTx1 = await slice.deposit(autoCompounders[0].target, amountToDeposit);
-    console.log("Deposit to AutoCompounder Tx1: ", depositAutoCompounderTx1.hash);
     const depositAutoCompounderTx2 = await slice.deposit(autoCompounders[1].target, amountToDeposit);
-    console.log("Deposit to AutoCompounder Tx2: ", depositAutoCompounderTx2.hash);
+    console.log(`Deposit to AutoCompounder Tx1: ${depositAutoCompounderTx1.hash}`);
+    console.log(`Deposit to AutoCompounder Tx2: ${depositAutoCompounderTx2.hash}`);
 
     // Add reward
     await rewardToken.approve(vaults[0].target, rewardAmount);
@@ -70,12 +70,12 @@ export async function rebalance() {
 
     const addRewardTx1 = await vaults[0].addReward(rewardToken.target, rewardAmount);
     const addRewardTx2 = await vaults[1].addReward(rewardToken.target, rewardAmount);
-    console.log(addRewardTx1.hash);
-    console.log(addRewardTx2.hash);
+    console.log(`Reward added Tx1: ${addRewardTx1.hash}`);
+    console.log(`Reward added Tx2: ${addRewardTx2.hash}`);
 
-    console.log("aToken1 balance before: ", await autoCompounders[0].balanceOf(slice.target));
-    console.log("aToken2 balance before: ", await autoCompounders[1].balanceOf(slice.target));
-    console.log("USDC balance before: ", await rewardToken.balanceOf(slice.target));
+    console.log(`aToken1 balance before: ${await autoCompounders[0].balanceOf(slice.target)}`);
+    console.log(`aToken2 balance before: ${await autoCompounders[1].balanceOf(slice.target)}`);
+    console.log(`USDC balance before: ${await rewardToken.balanceOf(slice.target)}`);
 
     await delay(90000);
 
@@ -83,10 +83,13 @@ export async function rebalance() {
 
     console.log(`Rebalance tx: ${tx.hash}`);
 
-    console.log("aToken1 balance after: ", await autoCompounders[0].balanceOf(slice.target));
-    console.log("aToken2 balance after: ", await autoCompounders[1].balanceOf(slice.target));
-    console.log("USDC balance after: ", await rewardToken.balanceOf(slice.target));
+    console.log(`aToken1 balance after: ${await autoCompounders[0].balanceOf(slice.target)}`);
+    console.log(`aToken2 balance after: ${await autoCompounders[1].balanceOf(slice.target)}`);
+    console.log(`USDC balance after: ${await rewardToken.balanceOf(slice.target)}`);
 }
+
+rebalance()
+    .catch(console.error);
 
 module.exports = {
     rebalance

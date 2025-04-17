@@ -9,6 +9,9 @@ const salt = `0x${uuidv4().replace(/-/g, '')}`; // generate salt
 const cliff = 100;
 const unlockDuration = 500;
 
+const assetsAmount = ethers.parseUnits("10", 18);
+const rewardAmount = ethers.parseUnits("50", 18);
+
 const feeConfig = {
     receiver: ZeroAddress,
     token: ZeroAddress,
@@ -17,6 +20,8 @@ const feeConfig = {
 
 export async function deployAsyncVault(): Promise<string> {
     const [owner] = await ethers.getSigners();
+
+    const rewardToken = await ethers.getContractAt("VaultToken", Deployments.vault.RewardToken);
 
     const VaultToken = await ethers.getContractFactory("VaultToken");
     const stakingToken = await VaultToken.deploy();
@@ -55,6 +60,20 @@ export async function deployAsyncVault(): Promise<string> {
     const newVaultAddress = decodedEvent.args[0];
 
     console.log(`Vault deployed at address: ${newVaultAddress}, tx: ${tx.hash}`);
+
+    const vault = await ethers.getContractAt("AsyncVault", newVaultAddress);
+
+    // Request deposit
+    const requestDepositTx = await vault.requestDeposit(assetsAmount, owner.address, owner.address);
+    console.log(`Deposit requested: ${requestDepositTx.hash}`);
+
+    // Claim deposit
+    const depositTx = await vault['deposit(uint256,address)'](assetsAmount, owner.address);
+    console.log(`Claim deposit: ${depositTx.hash}`);
+
+    // Add initial reward
+    const addRewardTx = await vault.addReward(rewardToken.target, rewardAmount);
+    console.log(`Reward added: ${addRewardTx.hash}`);
 
     return newVaultAddress;
 }

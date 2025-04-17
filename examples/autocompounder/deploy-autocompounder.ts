@@ -6,10 +6,10 @@ import { uniswapRouterAddress } from '../../constants';
 
 import { deployVault } from '../vault/deploy-vault';
 
-const salt = `0x${uuidv4().replace(/-/g, '')}`; // generate salt
-
 export async function deployAutoCompounder(): Promise<string> {
     const [owner] = await ethers.getSigners();
+
+    const salt = `0x${uuidv4().replace(/-/g, '')}`; // generate salt
 
     const rewardToken = await ethers.getContractAt('VaultToken', Deployments.vault.RewardToken);
     const autoCompounderFactory = await ethers.getContractAt('AutoCompounderFactory', Deployments.autoCompounder.AutoCompounderFactory);

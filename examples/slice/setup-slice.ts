@@ -16,6 +16,9 @@ const allocationPercentage2 = 6000;
 export async function setupSlice() {
     const [owner] = await ethers.getSigners();
 
+    const autoCompounder1 = await deployAutoCompounder();
+    const autoCompounder2 = await deployAutoCompounder();
+
     const rewardToken = await ethers.getContractAt('VaultToken', Deployments.vault.RewardToken);
     const sliceFactory = await ethers.getContractAt('SliceFactory', Deployments.slice.SliceFactory);
 
@@ -43,9 +46,6 @@ export async function setupSlice() {
     console.log(`Slice deployed at address: ${newSliceAddress}, tx: ${tx.hash}`);
 
     const slice = await ethers.getContractAt("Slice", newSliceAddress);
-
-    const autoCompounder1 = await deployAutoCompounder();
-    const autoCompounder2 = await deployAutoCompounder();
 
     const allocationTx1 = await slice.addAllocation(autoCompounder1, chainlinkAggregatorMockAddress, allocationPercentage1);
     const allocationTx2 = await slice.addAllocation(autoCompounder2, chainlinkAggregatorMockAddress, allocationPercentage2);
