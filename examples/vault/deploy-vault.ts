@@ -64,10 +64,12 @@ export async function deployVault(): Promise<string> {
     const vault = await ethers.getContractAt("BasicVault", newVaultAddress);
 
     // Deposit
+    await stakingToken.approve(vault.target, assetsAmount);
     const depositTx = await vault.deposit(assetsAmount, owner.address);
     console.log(`Deposit to vault ${depositTx.hash}`);
 
     // Add initial reward
+    await rewardToken.approve(vault.target, rewardAmount);
     const addRewardTx = await vault.addReward(rewardToken.target, rewardAmount);
     console.log(`Reward added to vault ${addRewardTx.hash}`);
 

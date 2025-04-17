@@ -64,6 +64,7 @@ export async function deployAsyncVault(): Promise<string> {
     const vault = await ethers.getContractAt("AsyncVault", newVaultAddress);
 
     // Request deposit
+    await stakingToken.approve(vault.target, assetsAmount);
     const requestDepositTx = await vault.requestDeposit(assetsAmount, owner.address, owner.address);
     console.log(`Deposit requested: ${requestDepositTx.hash}`);
 
@@ -72,6 +73,7 @@ export async function deployAsyncVault(): Promise<string> {
     console.log(`Claim deposit: ${depositTx.hash}`);
 
     // Add initial reward
+    await rewardToken.approve(vault.target, rewardAmount);
     const addRewardTx = await vault.addReward(rewardToken.target, rewardAmount);
     console.log(`Reward added: ${addRewardTx.hash}`);
 
