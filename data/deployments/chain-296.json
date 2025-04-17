@@ -35,7 +35,7 @@
   },
   "slice": {
     "Slice": "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6",
-    "SliceFactory": "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318"
+    "SliceFactory": "0x2676b4b821535741C4E518C08502E1d44dedFF51"
   },
   "autoCompounder": {
     "AutoCompounder": "0xa250aeA16b9Aed0996Dd33D70d91536e523A9Fc2",
