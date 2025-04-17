@@ -1,6 +1,10 @@
 import { ethers } from 'hardhat';
 import Deployments from '../../data/deployments/chain-296.json';
 
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 const assetsAmount = ethers.parseUnits("10", 18);
 const rewardAmount = ethers.parseUnits("50000000", 18);
 
@@ -8,8 +12,8 @@ async function withdraw() {
     const [owner] = await ethers.getSigners();
 
     const vault = await ethers.getContractAt('AsyncVault', Deployments.asyncVault.AsyncVault);
-    const stakingToken = await ethers.getContractAt('VaultToken', Deployments.asyncVault.StakingToken);
     const rewardToken = await ethers.getContractAt('VaultToken', Deployments.asyncVault.RewardToken);
+    const stakingToken = await ethers.getContractAt('VaultToken', await vault.asset());
 
     // Request deposit
     await stakingToken.approve(vault.target, assetsAmount);
@@ -25,6 +29,9 @@ async function withdraw() {
     const addRewardTx = await vault.addReward(rewardToken.target, rewardAmount);
     await addRewardTx.wait();
     console.log(`Reward added: ${addRewardTx.hash}`);
+
+    // Warp time to unlock tokens
+    await delay(90000);
 
     // Request redeem
     await vault.approve(vault.target, assetsAmount);
