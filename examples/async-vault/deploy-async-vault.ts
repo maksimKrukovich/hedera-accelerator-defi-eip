@@ -6,8 +6,8 @@ import Deployments from '../../data/deployments/chain-296.json';
 
 const salt = `0x${uuidv4().replace(/-/g, '')}`; // generate salt
 
-const cliff = 100;
-const unlockDuration = 500;
+const cliff = 30;
+const unlockDuration = 60;
 
 const assetsAmount = ethers.parseUnits("10", 18);
 const rewardAmount = ethers.parseUnits("50", 18);
@@ -23,7 +23,7 @@ const feeConfig = {
 export async function deployAsyncVault(): Promise<string> {
     const [owner] = await ethers.getSigners();
 
-    const rewardToken = await ethers.getContractAt("VaultToken", Deployments.vault.RewardToken);
+    const rewardToken = await ethers.getContractAt("VaultToken", Deployments.asyncVault.RewardToken);
     await rewardToken.mint(owner.address, initialRewardToMint);
 
     const VaultToken = await ethers.getContractFactory("VaultToken");

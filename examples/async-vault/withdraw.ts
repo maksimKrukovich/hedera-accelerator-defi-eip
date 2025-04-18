@@ -35,7 +35,9 @@ async function withdraw() {
 
     // Request redeem
     await vault.approve(vault.target, assetsAmount);
-    await vault.requestRedeem(assetsAmount, owner.address, owner.address);
+    const requestRedeemTx = await vault.requestRedeem(assetsAmount, owner.address, owner.address);
+    await requestRedeemTx.wait();
+    console.log(`Redeem requested: ${requestRedeemTx.hash}`);
 
     // Withdraw
     const withdrawTx = await vault.withdraw(assetsAmount, owner.address, owner.address);
