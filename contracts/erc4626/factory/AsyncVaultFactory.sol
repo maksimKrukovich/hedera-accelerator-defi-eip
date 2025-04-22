@@ -79,7 +79,9 @@ contract AsyncVaultFactory is Ownable, IVaultFactory, ERC165 {
             feeConfig.token,
             feeConfig.feePercentage,
             vaultDetails.vaultRewardController,
-            vaultDetails.feeConfigController
+            vaultDetails.feeConfigController,
+            vaultDetails.cliff,
+            vaultDetails.unlockDuration
         );
 
         bytes memory deploymentData = abi.encodePacked(_code, _constructData);
@@ -119,19 +121,16 @@ contract AsyncVaultFactory is Ownable, IVaultFactory, ERC165 {
      * @param nonce uint256
      * @param token address
      */
-    function generateSalt(
-        address deployer,
-        address token,
-        uint256 nonce
-    ) external pure returns (string memory) {
+    function generateSalt(address deployer, address token, uint256 nonce) external pure returns (string memory) {
         // Convert the deployer and token addresses to hexadecimal strings,
         // and the nonce to a decimal string.
-        return string(
-            abi.encodePacked(
-                Strings.toHexString(uint256(uint160(deployer)), 20),
-                Strings.toHexString(uint256(uint160(token)), 20),
-                Strings.toString(nonce)
-            )
-        );
+        return
+            string(
+                abi.encodePacked(
+                    Strings.toHexString(uint256(uint160(deployer)), 20),
+                    Strings.toHexString(uint256(uint160(token)), 20),
+                    Strings.toString(nonce)
+                )
+            );
     }
 }
