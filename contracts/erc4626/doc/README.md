@@ -80,6 +80,10 @@ const newFeeConfiguration = {
 await vault.updateFeeConfig(newFeeConfiguration);
 ```
 
+## Errors
+error MaxRewardTokensAmount();
+* Throws when owner adds reward which exceeds max token amount.
+
 ## Core Functions
 ### Deposit & Mint
 deposit(uint256 assets, address receiver) returns uint256

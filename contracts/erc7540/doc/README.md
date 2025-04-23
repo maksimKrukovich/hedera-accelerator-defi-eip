@@ -76,6 +76,22 @@ const newFeeConfiguration = {
 await vault.updateFeeConfig(newFeeConfiguration);
 ```
 
+## Errors
+error MaxDepositRequestExceeded(address controller, uint256 assets, uint256 maxDeposit);
+* Throws when a user tries to 'claim' deposit and the desired amount is grater than 'claimable' deposit balance.
+
+error MaxRedeemRequestExceeded(address controller, uint256 shares, uint256 maxShares);
+* Throws when a user tries to 'claim' deposit and the desired amount is grater than 'claimable' redeem balance.
+
+error InvalidController();
+* Throws when an unauthorized address attempts to act as a controller.
+
+error InvalidOperator();
+* Throws when trying to set an invalid operator, such as setting oneself as an operator.
+
+error MaxRewardTokensAmount();
+* Throws when owner adds reward which exceeds max token amount.
+
 ## Core Functions
 ### Async Deposit & Withdrawal logic
 requestDeposit(uint256 assets, address controller, address owner) returns uint256
