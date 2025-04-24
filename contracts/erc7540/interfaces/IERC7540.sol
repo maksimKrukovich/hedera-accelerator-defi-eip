@@ -29,14 +29,14 @@ interface IERC7540 {
     event RedeemRequested(address indexed controller, address indexed owner, address sender, uint256 shares);
 
     /**
-     * @notice The error is emitted when a user try to make a new deposit request
-     * and the deposited amount is grater than deposit limit.
+     * @notice The error is emitted when a user tries to claim deposit
+     * and the desired amount is grater than 'claimable' deposit balance.
      */
     error MaxDepositRequestExceeded(address controller, uint256 assets, uint256 maxDeposit);
 
     /**
-     * @notice The error is emitted when a user try to make a new redeem request
-     * but there is lack of shares.
+     * @notice The error is emitted when a user tries to claim redeem
+     * and the desired amount is greater than 'claimable' redeem balance.
      */
     error MaxRedeemRequestExceeded(address controller, uint256 shares, uint256 maxShares);
 
