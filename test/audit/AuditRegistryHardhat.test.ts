@@ -65,5 +65,51 @@ describe('AuditRegistry', () => {
       expect(record.ipfsHash).to.equal('ipfs://audit1');
       expect(record.revoked).to.be.false;
     });
+
+    it.only('should revert in case of duplicate ipfs hash', async () => {
+      const { auditRegistry, owner, auditor1 } = await loadFixture(deployFixture);
+      const AUDITOR_ROLE = await auditRegistry.AUDITOR_ROLE();
+      await auditRegistry.connect(owner).addAuditor(await auditor1.getAddress());
+      const buildingAddr = await owner.getAddress();
+      await expect(auditRegistry.connect(auditor1).addAuditRecord(buildingAddr, 'ipfs://audit1'))
+        .to.emit(auditRegistry, 'AuditRecordAdded')
+        .withArgs(
+          1,
+          buildingAddr,
+          await auditor1.getAddress(),
+          'ipfs://audit1',
+          anyValue
+        );
+      const record = await auditRegistry.auditRecords(1);
+      expect(record.building).to.equal(buildingAddr);
+      expect(record.ipfsHash).to.equal('ipfs://audit1');
+      expect(record.revoked).to.be.false;
+
+      await expect(auditRegistry.connect(auditor1).addAuditRecord(buildingAddr, 'ipfs://audit1'))
+        .to.be.revertedWithCustomError(auditRegistry, 'DuplicateIpfsHash');
+    });
+
+    it.only('should revert in case of duplicate ipfs hash during record update', async () => {
+      const { auditRegistry, owner, auditor1 } = await loadFixture(deployFixture);
+      const AUDITOR_ROLE = await auditRegistry.AUDITOR_ROLE();
+      await auditRegistry.connect(owner).addAuditor(await auditor1.getAddress());
+      const buildingAddr = await owner.getAddress();
+      await expect(auditRegistry.connect(auditor1).addAuditRecord(buildingAddr, 'ipfs://audit1'))
+        .to.emit(auditRegistry, 'AuditRecordAdded')
+        .withArgs(
+          1,
+          buildingAddr,
+          await auditor1.getAddress(),
+          'ipfs://audit1',
+          anyValue
+        );
+      const record = await auditRegistry.auditRecords(1);
+      expect(record.building).to.equal(buildingAddr);
+      expect(record.ipfsHash).to.equal('ipfs://audit1');
+      expect(record.revoked).to.be.false;
+
+      await expect(auditRegistry.connect(auditor1).updateAuditRecord(1, 'ipfs://audit1'))
+        .to.be.revertedWithCustomError(auditRegistry, 'DuplicateIpfsHash');
+    });
   });
 });
