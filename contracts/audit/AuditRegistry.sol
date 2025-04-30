@@ -107,27 +107,6 @@ contract AuditRegistry is AccessControl {
     }
 
     /**
-     * @dev Add a new auditor under AUDITOR_ROLE.
-     *
-     * @param _auditor The auditor address.
-     */
-    function addAuditor(address _auditor) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_auditor != address(0), "AuditRegistry: Invalid auditor address");
-        grantRole(AUDITOR_ROLE, _auditor);
-        emit AuditorAdded(_auditor);
-    }
-
-    /**
-     * @dev Remove an auditor from AUDITOR_ROLE.
-     *
-     * @param _auditor The auditor address.
-     */
-    function removeAuditor(address _auditor) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        revokeRole(AUDITOR_ROLE, _auditor);
-        emit AuditorRemoved(_auditor);
-    }
-
-    /**
      * @notice Adds a new audit record for a building address.
      *
      * @param _building The EVM address of the building.
