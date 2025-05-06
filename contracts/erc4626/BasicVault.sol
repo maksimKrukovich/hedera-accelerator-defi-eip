@@ -265,7 +265,7 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
 
         if ($.rewardTokens.length == 10) revert MaxRewardTokensAmount();
 
-        uint256 perShareRewards = _amount.mulDivDown(1, totalAssets());
+        uint256 perShareRewards = _amount.mulDivDown(1e18, totalAssets());
         RewardsInfo storage rewardInfo = $.tokensRewardInfo[_token];
         if (!rewardInfo.exist) {
             $.rewardTokens.push(_token);
@@ -333,8 +333,7 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
         uint256 perShareUnclaimedAmount = perShareAmount - perShareClaimedAmount;
 
         // Add precision to consider small rewards
-        unclaimedAmount = (perShareUnclaimedAmount * 1e18) / userStakingTokenTotal;
-        unclaimedAmount = unclaimedAmount / 1e18;
+        unclaimedAmount = (perShareUnclaimedAmount * userStakingTokenTotal) / 1e18;
 
         // If reward less than 0 – apply min reward
         if (unclaimedAmount == 0) unclaimedAmount = MIN_REWARD;

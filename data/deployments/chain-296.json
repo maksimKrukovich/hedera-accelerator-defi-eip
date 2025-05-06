@@ -29,7 +29,7 @@
   },
   "vault": {
     "Vault": "0x66940FCa4F49bF79EB2505a9b634C93faB759129",
-    "VaultFactory": "0x54F0a85477A0B16Cdc41D67b7F55941b4361ed63",
+    "VaultFactory": "0x6E90d5281cAd17122e6B96fbf043EB8b25340d85",
     "StakingToken": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
     "RewardToken": "0x11724c1E87cb63eb570383CFC260F597F71f9605"
   },
@@ -46,7 +46,7 @@
   },
   "asyncVault": {
     "AsyncVault": "0x9d2cDA1A5e3A527Ce6E9eD733350AfEC00B3f83c",
-    "AsyncVaultFactory": "0x83c69d73a4d5a3a19614ba4D953b65615aA3ACAb",
+    "AsyncVaultFactory": "0xE43F1d6Bb080FC81Def2B8bf288943481884369E",
     "StakingToken": "0x0Ef8B789bB76752B70749f87EF9bE31082e465F9",
     "RewardToken": "0x11724c1E87cb63eb570383CFC260F597F71f9605"
   }

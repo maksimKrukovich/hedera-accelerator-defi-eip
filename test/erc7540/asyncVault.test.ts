@@ -138,7 +138,7 @@ describe("AsyncVault", function () {
             ).to.changeTokenBalance(
                 rewardToken,
                 owner.address,
-                173010
+                4999999999
             );
             // Check shares received
             await expect(
@@ -273,7 +273,7 @@ describe("AsyncVault", function () {
             ).to.changeTokenBalance(
                 rewardToken,
                 owner.address,
-                173010
+                4999999999
             );
         });
 
@@ -401,7 +401,7 @@ describe("AsyncVault", function () {
             ).to.changeTokenBalance(
                 rewardToken,
                 owner.address,
-                173010
+                4999999999
             );
             // Check assets received
             await expect(
