@@ -21,77 +21,17 @@ import {FeeConfiguration} from "../common/FeeConfiguration.sol";
 import {FixedPointMathLib} from "../math/FixedPointMathLib.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
+import {BasicVaultStorage} from "./BasicVaultStorage.sol";
+
 /**
  * @title Basic Vault
  * @author Hashgraph
  *
  * The contract which represents a custom Vault.
  */
-contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGuard {
+contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using FixedPointMathLib for uint256;
-
-    // Min reward amount considired in case of small reward
-    uint256 private constant MIN_REWARD = 1;
-
-    // Total duration of vesting (after cliff date) expressed in seconds
-    uint32 private _unlockDuration;
-
-    // Cliff date expressed in seconds
-    uint32 public _cliff;
-
-    // Reward tokens
-    address[] private _rewardTokens;
-
-    // Info by user
-    mapping(address => UserInfo) private _userContribution;
-
-    // Reward info by user
-    mapping(address => RewardsInfo) private _tokensRewardInfo;
-
-    // User Info struct
-    struct UserInfo {
-        uint256 sharesAmount;
-        uint256 totalLocked;
-        uint256 totalReleased;
-        uint256 depositLockCheckpoint;
-        mapping(address => uint256) lastClaimedAmountT;
-        bool exist;
-    }
-
-    // Rewards Info struct
-    struct RewardsInfo {
-        uint256 amount;
-        bool exist;
-    }
-
-    /**
-     * @notice CreatedToken event.
-     * @dev Emitted after contract initialization, when share token was deployed.
-     *
-     * @param createdToken The address of share token.
-     */
-    event CreatedToken(address indexed createdToken);
-
-    /**
-     * @notice RewardAdded event.
-     * @dev Emitted when permissioned user adds reward to the Vault.
-     *
-     * @param rewardToken The address of reward token.
-     * @param amount The added reward token amount.
-     */
-    event RewardAdded(address indexed rewardToken, uint256 amount);
-
-    /**
-     * @notice SetSharesLockTime event.
-     * @dev Emitted when permissioned user updates shares lock time.
-     *
-     * @param time The shares lock period.
-     */
-    event SetSharesLockTime(uint32 time);
-
-    // Using if owner adds reward which exceeds max token amount
-    error MaxRewardTokensAmount();
 
     /**
      * @dev Initializes contract with passed parameters.
@@ -115,10 +55,12 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
         uint32 cliff_,
         uint32 unlockDuration_
     ) payable ERC20(name_, symbol_) ERC4626(underlying_) Ownable(msg.sender) {
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
         __FeeConfiguration_init(feeConfig_, vaultRewardController_, feeConfigController_);
 
-        _cliff = cliff_;
-        _unlockDuration = unlockDuration_;
+        $.cliff = cliff_;
+        $.unlockDuration = unlockDuration_;
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -225,7 +167,9 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @param time The lock period.
      */
     function setSharesLockTime(uint32 time) external onlyOwner {
-        _unlockDuration = time;
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
+        $.unlockDuration = time;
         emit SetSharesLockTime(time);
     }
 
@@ -241,8 +185,11 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      */
     function _beforeWithdraw(uint256 _amount, address _rewardReceiver) internal {
         claimAllReward(0, _rewardReceiver);
-        _userContribution[msg.sender].sharesAmount -= _amount;
-        _userContribution[msg.sender].totalReleased += _amount;
+
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
+        $.userContribution[msg.sender].sharesAmount -= _amount;
+        $.userContribution[msg.sender].totalReleased += _amount;
     }
 
     /**
@@ -252,46 +199,49 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @param rewardReceiver The reward receiver address.
      */
     function _afterDeposit(uint256 amount, address rewardReceiver) internal {
-        if (!_userContribution[msg.sender].exist) {
-            uint256 rewardTokensSize = _rewardTokens.length;
+        BasicVaultData storage $ = _getBasicVaultStorage();
+        if (!$.userContribution[msg.sender].exist) {
+            uint256 rewardTokensSize = $.rewardTokens.length;
             for (uint256 i; i < rewardTokensSize; i++) {
-                address token = _rewardTokens[i];
-                _userContribution[msg.sender].lastClaimedAmountT[token] = _tokensRewardInfo[token].amount;
+                address token = $.rewardTokens[i];
+                $.userContribution[msg.sender].lastClaimedAmountT[token] = $.tokensRewardInfo[token].amount;
             }
-            _userContribution[msg.sender].sharesAmount = amount;
-            _userContribution[msg.sender].totalLocked = amount;
-            _userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
-            _userContribution[msg.sender].exist = true;
+            $.userContribution[msg.sender].sharesAmount = amount;
+            $.userContribution[msg.sender].totalLocked = amount;
+            $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
+            $.userContribution[msg.sender].exist = true;
         } else {
-            if (_userContribution[msg.sender].sharesAmount == 0) {
-                _userContribution[msg.sender].sharesAmount += amount;
-                _userContribution[msg.sender].totalLocked += amount;
-                _userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
+            if ($.userContribution[msg.sender].sharesAmount == 0) {
+                $.userContribution[msg.sender].sharesAmount += amount;
+                $.userContribution[msg.sender].totalLocked += amount;
+                $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
             } else {
                 claimAllReward(0, rewardReceiver);
-                _userContribution[msg.sender].sharesAmount += amount;
-                _userContribution[msg.sender].totalLocked += amount;
-                _userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
+                $.userContribution[msg.sender].sharesAmount += amount;
+                $.userContribution[msg.sender].totalLocked += amount;
+                $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
             }
         }
     }
 
     function _unlocked(address account) private view returns (uint256 unlocked) {
-        UserInfo storage info = _userContribution[account];
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
+        UserInfo storage info = $.userContribution[account];
 
         uint256 currentlyLocked = info.totalLocked - info.totalReleased;
 
-        uint256 lockStart = info.depositLockCheckpoint + _cliff;
+        uint256 lockStart = info.depositLockCheckpoint + $.cliff;
 
         if (block.timestamp < lockStart || currentlyLocked == 0) return 0;
 
-        uint256 lockEnd = lockStart + _unlockDuration;
+        uint256 lockEnd = lockStart + $.unlockDuration;
 
         if (block.timestamp >= lockEnd) {
             unlocked = currentlyLocked;
         } else {
             uint256 elapsed = block.timestamp - lockStart;
-            unlocked = (currentlyLocked * elapsed) / _unlockDuration;
+            unlocked = (currentlyLocked * elapsed) / $.unlockDuration;
         }
     }
 
@@ -311,17 +261,19 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
         require(_token != address(0), "HederaVault: Invalid reward token");
         require(totalAssets() != 0, "HederaVault: No token staked yet");
 
-        if (_rewardTokens.length == 10) revert MaxRewardTokensAmount();
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
+        if ($.rewardTokens.length == 10) revert MaxRewardTokensAmount();
 
         uint256 perShareRewards = _amount.mulDivDown(1, totalAssets());
-        RewardsInfo storage rewardInfo = _tokensRewardInfo[_token];
+        RewardsInfo storage rewardInfo = $.tokensRewardInfo[_token];
         if (!rewardInfo.exist) {
-            _rewardTokens.push(_token);
+            $.rewardTokens.push(_token);
             rewardInfo.exist = true;
             rewardInfo.amount = perShareRewards;
             IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         } else {
-            _tokensRewardInfo[_token].amount += perShareRewards;
+            $.tokensRewardInfo[_token].amount += perShareRewards;
             IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         }
         emit RewardAdded(_token, _amount);
@@ -334,7 +286,9 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @return The index of the start position after the last claimed reward and the total number of reward tokens.
      */
     function claimAllReward(uint256 _startPosition, address receiver) public returns (uint256, uint256) {
-        uint256 _rewardTokensSize = _rewardTokens.length;
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
+        uint256 _rewardTokensSize = $.rewardTokens.length;
         address _feeToken = feeConfig.token;
         address _rewardToken;
         uint256 _reward;
@@ -342,10 +296,10 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
         require(_rewardTokensSize != 0, "HederaVault: No reward tokens exist");
 
         for (uint256 i = _startPosition; i < _rewardTokensSize; i++) {
-            _rewardToken = _rewardTokens[i];
+            _rewardToken = $.rewardTokens[i];
 
             _reward = getUserReward(msg.sender, _rewardToken);
-            _userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = _tokensRewardInfo[_rewardToken].amount;
+            $.userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = $.tokensRewardInfo[_rewardToken].amount;
 
             // Fee management
             if (_feeToken != address(0)) {
@@ -365,10 +319,12 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @return unclaimedAmount The calculated rewards.
      */
     function getUserReward(address _user, address _rewardToken) public view returns (uint256 unclaimedAmount) {
-        RewardsInfo storage _rewardInfo = _tokensRewardInfo[_rewardToken];
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
+        RewardsInfo storage _rewardInfo = $.tokensRewardInfo[_rewardToken];
         uint256 perShareAmount = _rewardInfo.amount;
 
-        UserInfo storage cInfo = _userContribution[_user];
+        UserInfo storage cInfo = $.userContribution[_user];
         uint256 userStakingTokenTotal = cInfo.sharesAmount;
 
         if (userStakingTokenTotal == 0) return 0;
@@ -396,7 +352,9 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @return The amount of locked shares.
      */
     function lockedOf(address account) public view returns (uint256) {
-        return _userContribution[account].totalLocked - _userContribution[account].totalReleased - unlockedOf(account);
+        BasicVaultData storage $ = _getBasicVaultStorage();
+        return
+            $.userContribution[account].totalLocked - $.userContribution[account].totalReleased - unlockedOf(account);
     }
 
     /**
@@ -416,11 +374,13 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @return _rewards The rewards array.
      */
     function getAllRewards(address _user) public view returns (uint256[] memory _rewards) {
-        uint256 rewardsSize = _rewardTokens.length;
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
+        uint256 rewardsSize = $.rewardTokens.length;
         _rewards = new uint256[](rewardsSize);
 
         for (uint256 i = 0; i < rewardsSize; i++) {
-            _rewards[i] = getUserReward(_user, _rewardTokens[i]);
+            _rewards[i] = getUserReward(_user, $.rewardTokens[i]);
         }
     }
 
@@ -438,14 +398,16 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @return The cliff time of the token vesting.
      */
     function cliff() external view returns (uint32) {
-        return _cliff;
+        BasicVaultData storage $ = _getBasicVaultStorage();
+        return $.cliff;
     }
 
     /**
      * @return The unlock duration of the token vesting.
      */
     function unlockDuration() external view returns (uint32) {
-        return _unlockDuration;
+        BasicVaultData storage $ = _getBasicVaultStorage();
+        return $.unlockDuration;
     }
 
     /**
@@ -454,7 +416,8 @@ contract BasicVault is ERC4626, ERC165, FeeConfiguration, Ownable, ReentrancyGua
      * @return Reward tokens.
      */
     function getRewardTokens() public view returns (address[] memory) {
-        return _rewardTokens;
+        BasicVaultData storage $ = _getBasicVaultStorage();
+        return $.rewardTokens;
     }
 
     /**

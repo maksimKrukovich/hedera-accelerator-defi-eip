@@ -3,7 +3,6 @@ import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
 import { BigNumberish, Wallet, ZeroAddress } from "ethers";
 import { VaultToken, BasicVault } from "../../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import hre from "hardhat";
 
 async function deposit(vault: BasicVault, address: string, amount: BigNumberish, staker: Wallet | HardhatEthersSigner) {
     const token = await ethers.getContractAt(
