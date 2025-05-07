@@ -35,7 +35,7 @@ contract BuildingFactoryMock is BuildingFactory {
         );
     }
 
-    function newBuilding(string memory tokenURI) public override {
-        super.newBuilding(tokenURI);
+    function newBuilding(NewBuildingDetails calldata details) public override returns (BuildingDetails memory buildingDetails)  {
+        buildingDetails = super.newBuilding(details);
     }
 }
