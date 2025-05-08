@@ -15,6 +15,7 @@ import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {ERC7540} from "./ERC7540.sol";
 import {IERC7540} from "./interfaces/IERC7540.sol";
+import {ERC7540_FilledRequest, ERC7540_Request} from "./types/ERC7540Types.sol";
 
 import {FeeConfiguration} from "../common/FeeConfiguration.sol";
 
@@ -28,62 +29,56 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
     using SafeERC20 for IERC20;
     using FixedPointMathLib for uint256;
 
-    // Min reward amount considired in case of small reward
-    uint8 private constant MIN_REWARD = 1;
-
     // Total duration of vesting (after cliff date) expressed in seconds
-    uint32 private _unlockDuration;
+    // uint32 private _unlockDuration;
 
-    // Cliff date expressed in seconds
-    uint32 public _cliff;
+    // // Cliff date expressed in seconds
+    // uint32 public _cliff;
 
-    // Reward tokens
-    address[] private _rewardTokens;
+    // // Reward tokens
+    // address[] private _rewardTokens;
 
-    // Timestamp of deposit lock
-    mapping(address => uint256) private _depositLockCheckPoint;
+    // // Timestamp of deposit lock
+    // mapping(address => uint256) private _depositLockCheckPoint;
 
-    // Info by user
-    mapping(address => UserInfo) private _userContribution;
+    // // Info by user
+    // mapping(address => UserInfo) private _userContribution;
 
-    // Reward info by user
-    mapping(address => RewardsInfo) private _tokensRewardInfo;
+    // // Reward info by user
+    // mapping(address => RewardsInfo) private _tokensRewardInfo;
 
-    // User Info struct
-    struct UserInfo {
-        uint256 sharesAmount;
-        uint256 totalLocked;
-        uint256 totalReleased;
-        uint256 depositLockCheckpoint;
-        mapping(address => uint256) lastClaimedAmountT;
-        bool exist;
-    }
+    // // User Info struct
+    // struct UserInfo {
+    //     uint256 sharesAmount;
+    //     uint256 totalLocked;
+    //     uint256 totalReleased;
+    //     uint256 depositLockCheckpoint;
+    //     mapping(address => uint256) lastClaimedAmountT;
+    //     bool exist;
+    // }
 
-    // Rewards Info struct
-    struct RewardsInfo {
-        uint256 amount;
-        bool exist;
-    }
+    // // Rewards Info struct
+    // struct RewardsInfo {
+    //     uint256 amount;
+    //     bool exist;
+    // }
 
-    /**
-     * @notice SetSharesLockTime event.
-     * @dev Emitted when permissioned user updates shares lock time.
-     *
-     * @param time The shares lock period.
-     */
-    event SetSharesLockTime(uint32 time);
+    // /**
+    //  * @notice SetSharesLockTime event.
+    //  * @dev Emitted when permissioned user updates shares lock time.
+    //  *
+    //  * @param time The shares lock period.
+    //  */
+    // event SetSharesLockTime(uint32 time);
 
-    /**
-     * @notice RewardAdded event.
-     * @dev Emitted when permissioned user adds reward to the Vault.
-     *
-     * @param rewardToken The address of reward token.
-     * @param amount The added reward token amount.
-     */
-    event RewardAdded(address indexed rewardToken, uint256 amount);
-
-    // Thrown when owner adds reward which exceeds max token amount
-    error MaxRewardTokensAmount();
+    // /**
+    //  * @notice RewardAdded event.
+    //  * @dev Emitted when permissioned user adds reward to the Vault.
+    //  *
+    //  * @param rewardToken The address of reward token.
+    //  * @param amount The added reward token amount.
+    //  */
+    // event RewardAdded(address indexed rewardToken, uint256 amount);
 
     /**
      * @dev Initializes contract with passed parameters.
@@ -109,8 +104,10 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
     ) payable ERC7540(underlying_) ERC20(name_, symbol_) Ownable(msg.sender) {
         __FeeConfiguration_init(feeConfig_, vaultRewardController_, feeConfigController_);
 
-        _cliff = cliff_;
-        _unlockDuration = unlockDuration_;
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+
+        $.cliff = cliff_;
+        $.unlockDuration = unlockDuration_;
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -121,10 +118,12 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @inheritdoc ERC7540
      */
     function requestDeposit(uint256 assets, address controller, address owner) public override {
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+
         uint256 mintedShares = convertToShares(assets);
         super.requestDeposit(assets, controller, owner);
         // fulfill the request directly
-        _fulfillDepositRequest(controller, assets, mintedShares);
+        _fulfillDepositRequest(controller, assets, mintedShares, $.pendingDepositRequest, $.claimableDepositRequest);
     }
 
     /**
@@ -179,8 +178,15 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @inheritdoc ERC7540
      */
     function requestRedeem(uint256 shares, address controller, address owner) public override {
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
         super.requestRedeem(shares, controller, owner);
-        _fulfillRedeemRequest(controller, shares, convertToAssets(shares));
+        _fulfillRedeemRequest(
+            controller,
+            shares,
+            convertToAssets(shares),
+            $.pendingRedeemRequest,
+            $.claimableRedeemRequest
+        );
     }
 
     /**
@@ -213,7 +219,8 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @param time The lock period.
      */
     function setSharesLockTime(uint32 time) external onlyOwner {
-        _unlockDuration = time;
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+        $.unlockDuration = time;
         emit SetSharesLockTime(time);
     }
 
@@ -224,10 +231,11 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
         uint256 assets,
         uint256 shares,
         address receiver,
-        address controller
+        address controller,
+        mapping(address => ERC7540_FilledRequest) storage claimableRedeemRequest
     ) internal override returns (uint256 assetsReturn, uint256 sharesReturn) {
         _beforeWithdraw(assets, receiver);
-        return super._withdraw(assets, shares, receiver, controller);
+        return super._withdraw(assets, shares, receiver, controller, claimableRedeemRequest);
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -242,8 +250,10 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      */
     function _beforeWithdraw(uint256 _amount, address _rewardReceiver) internal {
         claimAllReward(0, _rewardReceiver);
-        _userContribution[msg.sender].sharesAmount -= _amount;
-        _userContribution[msg.sender].totalReleased += _amount;
+
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+        $.userContribution[msg.sender].sharesAmount -= _amount;
+        $.userContribution[msg.sender].totalReleased += _amount;
     }
 
     /**
@@ -253,46 +263,49 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @param _rewardReceiver The reward receiver.
      */
     function _afterDeposit(uint256 _amount, address _rewardReceiver) internal {
-        if (!_userContribution[msg.sender].exist) {
-            uint256 rewardTokensSize = _rewardTokens.length;
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+
+        if (!$.userContribution[msg.sender].exist) {
+            uint256 rewardTokensSize = $.rewardTokens.length;
             for (uint256 i; i < rewardTokensSize; i++) {
-                address token = _rewardTokens[i];
-                _userContribution[msg.sender].lastClaimedAmountT[token] = _tokensRewardInfo[token].amount;
+                address token = $.rewardTokens[i];
+                $.userContribution[msg.sender].lastClaimedAmountT[token] = $.tokensRewardInfo[token].amount;
             }
-            _userContribution[msg.sender].sharesAmount = _amount;
-            _userContribution[msg.sender].totalLocked = _amount;
-            _userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
-            _userContribution[msg.sender].exist = true;
+            $.userContribution[msg.sender].sharesAmount = _amount;
+            $.userContribution[msg.sender].totalLocked = _amount;
+            $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
+            $.userContribution[msg.sender].exist = true;
         } else {
-            if (_userContribution[msg.sender].sharesAmount == 0) {
-                _userContribution[msg.sender].sharesAmount += _amount;
-                _userContribution[msg.sender].totalLocked += _amount;
-                _userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
+            if ($.userContribution[msg.sender].sharesAmount == 0) {
+                $.userContribution[msg.sender].sharesAmount += _amount;
+                $.userContribution[msg.sender].totalLocked += _amount;
+                $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
             } else {
                 claimAllReward(0, _rewardReceiver);
-                _userContribution[msg.sender].sharesAmount += _amount;
-                _userContribution[msg.sender].totalLocked += _amount;
-                _userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
+                $.userContribution[msg.sender].sharesAmount += _amount;
+                $.userContribution[msg.sender].totalLocked += _amount;
+                $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
             }
         }
     }
 
     function _unlocked(address account) private view returns (uint256 unlocked) {
-        UserInfo storage info = _userContribution[account];
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+        UserInfo storage info = $.userContribution[account];
 
         uint256 currentlyLocked = info.totalLocked - info.totalReleased;
 
-        uint256 lockStart = info.depositLockCheckpoint + _cliff;
+        uint256 lockStart = info.depositLockCheckpoint + $.cliff;
 
         if (block.timestamp < lockStart || currentlyLocked == 0) return 0;
 
-        uint256 lockEnd = lockStart + _unlockDuration;
+        uint256 lockEnd = lockStart + $.unlockDuration;
 
         if (block.timestamp >= lockEnd) {
             unlocked = currentlyLocked;
         } else {
             uint256 elapsed = block.timestamp - lockStart;
-            unlocked = (currentlyLocked * elapsed) / _unlockDuration;
+            unlocked = (currentlyLocked * elapsed) / $.unlockDuration;
         }
     }
 
@@ -312,17 +325,19 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
         require(_token != address(0), "AsyncVault: Invalid reward token");
         require(totalAssets() != 0, "AsyncVault: No token staked yet");
 
-        if (_rewardTokens.length == 10) revert MaxRewardTokensAmount();
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
 
-        uint256 perShareRewards = _amount.mulDivDown(1, totalAssets());
-        RewardsInfo storage rewardInfo = _tokensRewardInfo[_token];
+        if ($.rewardTokens.length == 10) revert MaxRewardTokensAmount();
+
+        uint256 perShareRewards = _amount.mulDivDown(1e18, totalAssets());
+        RewardsInfo storage rewardInfo = $.tokensRewardInfo[_token];
         if (!rewardInfo.exist) {
-            _rewardTokens.push(_token);
+            $.rewardTokens.push(_token);
             rewardInfo.exist = true;
             rewardInfo.amount = perShareRewards;
             IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         } else {
-            _tokensRewardInfo[_token].amount += perShareRewards;
+            $.tokensRewardInfo[_token].amount += perShareRewards;
             IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         }
         emit RewardAdded(_token, _amount);
@@ -336,7 +351,9 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @return The index of the start position after the last claimed reward and the total number of reward tokens.
      */
     function claimAllReward(uint256 _startPosition, address _receiver) public returns (uint256, uint256) {
-        uint256 _rewardTokensSize = _rewardTokens.length;
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+
+        uint256 _rewardTokensSize = $.rewardTokens.length;
         address _feeToken = feeConfig.token;
         address _rewardToken;
         uint256 _reward;
@@ -344,10 +361,10 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
         require(_rewardTokensSize != 0, "AsyncVault: No reward tokens exist");
 
         for (uint256 i = _startPosition; i < _rewardTokensSize; i++) {
-            _rewardToken = _rewardTokens[i];
+            _rewardToken = $.rewardTokens[i];
 
             _reward = getUserReward(msg.sender, _rewardToken);
-            _userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = _tokensRewardInfo[_rewardToken].amount;
+            $.userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = $.tokensRewardInfo[_rewardToken].amount;
 
             // Fee management
             if (_feeToken != address(0)) {
@@ -367,10 +384,12 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @return unclaimedAmount The calculated rewards.
      */
     function getUserReward(address _user, address _rewardToken) public view returns (uint256 unclaimedAmount) {
-        RewardsInfo storage _rewardInfo = _tokensRewardInfo[_rewardToken];
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+
+        RewardsInfo storage _rewardInfo = $.tokensRewardInfo[_rewardToken];
         uint256 perShareAmount = _rewardInfo.amount;
 
-        UserInfo storage cInfo = _userContribution[_user];
+        UserInfo storage cInfo = $.userContribution[_user];
         uint256 userStakingTokenTotal = cInfo.sharesAmount;
 
         if (userStakingTokenTotal == 0) return 0;
@@ -379,8 +398,7 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
         uint256 perShareUnclaimedAmount = perShareAmount - perShareClaimedAmount;
 
         // Add precision to consider small rewards
-        unclaimedAmount = (perShareUnclaimedAmount * 1e18) / userStakingTokenTotal;
-        unclaimedAmount = unclaimedAmount / 1e18;
+        unclaimedAmount = (perShareUnclaimedAmount * userStakingTokenTotal) / 1e18;
 
         // If reward less than 0 – apply min reward
         if (unclaimedAmount == 0) unclaimedAmount = MIN_REWARD;
@@ -398,7 +416,9 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @return The amount of locked shares.
      */
     function lockedOf(address account) public view returns (uint256) {
-        return _userContribution[account].totalLocked - _userContribution[account].totalReleased - unlockedOf(account);
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+        return
+            $.userContribution[account].totalLocked - $.userContribution[account].totalReleased - unlockedOf(account);
     }
 
     /**
@@ -418,11 +438,13 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @return _rewards The rewards array.
      */
     function getAllRewards(address _user) public view returns (uint256[] memory _rewards) {
-        uint256 rewardsSize = _rewardTokens.length;
+        AsyncVaultData storage $ = _getAsyncVaultStorage();
+
+        uint256 rewardsSize = $.rewardTokens.length;
         _rewards = new uint256[](rewardsSize);
 
         for (uint256 i = 0; i < rewardsSize; i++) {
-            _rewards[i] = getUserReward(_user, _rewardTokens[i]);
+            _rewards[i] = getUserReward(_user, $.rewardTokens[i]);
         }
     }
 
@@ -446,7 +468,7 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @return Reward tokens.
      */
     function getRewardTokens() public view returns (address[] memory) {
-        return _rewardTokens;
+        return _getAsyncVaultStorage().rewardTokens;
     }
 
     /**

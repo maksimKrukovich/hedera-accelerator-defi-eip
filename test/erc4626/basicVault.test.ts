@@ -3,7 +3,6 @@ import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
 import { BigNumberish, Wallet, ZeroAddress } from "ethers";
 import { VaultToken, BasicVault } from "../../typechain-types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import hre from "hardhat";
 
 async function deposit(vault: BasicVault, address: string, amount: BigNumberish, staker: Wallet | HardhatEthersSigner) {
     const token = await ethers.getContractAt(
@@ -171,7 +170,6 @@ describe("BasicVault", function () {
             const secondDepositTx = await hederaVault.deposit(
                 amountToDeposit,
                 owner.address,
-
             );
 
             console.log(secondDepositTx.hash);
@@ -664,7 +662,7 @@ describe("BasicVault", function () {
             ).to.changeTokenBalance(
                 rewardToken,
                 owner,
-                197840253229750
+                2499999999999999999999999n
             );
 
             await expect(
@@ -686,7 +684,7 @@ describe("BasicVault", function () {
             ).to.changeTokenBalance(
                 rewardToken,
                 staker,
-                197840253229750
+                2499999999999999999999999n
             );
 
             // Add reward
@@ -710,14 +708,14 @@ describe("BasicVault", function () {
             ).to.changeTokenBalance(
                 rewardToken,
                 owner,
-                198192714817855
+                2499999999999999999999999n
             );
             await expect(
                 stakerClaimTx
             ).to.changeTokenBalance(
                 rewardToken,
                 staker,
-                198192714817855
+                2499999999999999999999999n
             );
 
             console.log("Reward Owner balance after claim", await rewardToken.balanceOf(owner.address));
@@ -801,7 +799,7 @@ describe("BasicVault", function () {
             ).to.changeTokenBalance(
                 rewardToken,
                 staker.address,
-                197840253229750
+                2499999999999999999999999n
             );
         });
     });
