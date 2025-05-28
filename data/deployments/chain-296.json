@@ -28,16 +28,27 @@
     "TransferLimitOneHundredModule": "0xF29a8A633018984A19315D1080975FA793118076"
   },
   "vault": {
-    "VaultFactory": "0xA4Fadff4d8778710A8a0Ad25eE7436dcB6972DF6"
+    "Vault": "0x66940FCa4F49bF79EB2505a9b634C93faB759129",
+    "VaultFactory": "0x6F1701ee920904D0De6628815B6F6a7d7f70602C",
+    "StakingToken": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "RewardToken": "0x11724c1E87cb63eb570383CFC260F597F71f9605"
   },
   "slice": {
-    "SliceFactory": "0x03eBAc2cc657FB773F501B925914521d8e01EaD9"
+    "Slice": "0x2dc9C11744FDd592c4a3033D4319d86F3A9E6fc0",
+    "SliceFactory": "0x3CCb7268B68B0AA3450AB3dd579796619Fc2e64f"
   },
   "autoCompounder": {
-    "AutoCompounderFactory": "0xaA94F61bD5671EE183F32c27fd8D9089d430afE5"
+    "AutoCompounder": "0xa250aeA16b9Aed0996Dd33D70d91536e523A9Fc2",
+    "AutoCompounderFactory": "0xf6A517F696c525142DAa679bf7725459bC543F9c"
+  },
+  "nft": {
+    "HederaNFT": "0xCeabeC99782c70840A8C11eE931473Ec6407678B"
   },
   "asyncVault": {
-    "AsyncVaultFactory": "0xebcb425b4acDbA6f99da1bd95d9fcd163A8E058A"
+    "AsyncVault": "0x9d2cDA1A5e3A527Ce6E9eD733350AfEC00B3f83c",
+    "AsyncVaultFactory": "0x2b8246D5f6ad1049b02A2173c2b9cc0D715eE010",
+    "StakingToken": "0x0Ef8B789bB76752B70749f87EF9bE31082e465F9",
+    "RewardToken": "0x11724c1E87cb63eb570383CFC260F597F71f9605"
   },
   "libraries": {
     "BuildingTokenLib": "0x47aFE1db3E9c818C6D7B2928B266a1d976D159ae",
