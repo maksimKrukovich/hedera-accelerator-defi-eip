@@ -18,15 +18,6 @@ async function requestDeposit(vault: AsyncVault, address: string, amount: BigNum
 }
 
 // constants
-// const testAccountAddress = "0x934b9afc8be0f78f698753a8f67131fa58cd9884";
-// const operatorPrKeyTest = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY_TEST || '');
-// const operatorAccountIdTest = AccountId.fromString(process.env.ACCOUNT_ID_TEST || '');
-
-// const operatorPrKey = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY || '');
-// const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
-
-// const testAccount = new hre.ethers.Wallet(process.env.PRIVATE_KEY_TEST!, ethers.provider);
-
 const cliff = 100;
 const unlockDuration = 500;
 
@@ -52,8 +43,6 @@ describe("AsyncVault", function () {
         const stakingToken = await VaultToken.deploy(
         ) as VaultToken;
         await stakingToken.waitForDeployment();
-
-        // await stakingToken.mint(testAccount.address, ethers.parseUnits("500000000", 18));
 
         const rewardToken = await VaultToken.deploy(
         ) as VaultToken;
@@ -85,7 +74,6 @@ describe("AsyncVault", function () {
             stakingToken,
             client,
             owner,
-            // testAccount,
         };
     }
 
