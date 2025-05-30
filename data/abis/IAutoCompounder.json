@@ -4,8 +4,14 @@
   "sourceName": "contracts/autocompounder/interfaces/IAutoCompounder.sol",
   "abi": [
     {
-      "inputs": [],
-      "name": "ZeroReward",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "reward",
+          "type": "uint256"
+        }
+      ],
+      "name": "InsufficientReward",
       "type": "error"
     },
     {

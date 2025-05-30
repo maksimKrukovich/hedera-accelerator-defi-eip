@@ -8,6 +8,8 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+import {FixedPointMathLib} from "../math/FixedPointMathLib.sol";
+
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC7540} from "../erc7540/interfaces/IERC7540.sol";
 
@@ -27,6 +29,13 @@ import {IRewards} from "../erc4626/interfaces/IRewards.sol";
  */
 contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
     using SafeERC20 for IERC20;
+    using FixedPointMathLib for uint256;
+
+    // Precision factor
+    uint256 private constant PRECISION = 1e18;
+
+    // Min reward to perform claim & reinvest
+    uint256 internal constant MIN_REWARD = 10e6; // 10$
 
     // Vault
     IERC4626 private immutable _vault;
@@ -99,7 +108,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         require(receiver != address(0), "AutoCompounder: Invalid receiver address");
 
         // Calculate aToken amount to mint using exchange rate
-        amountToMint = assets / exchangeRate();
+        amountToMint = assets.mulDivDown(PRECISION, exchangeRate());
 
         IERC20(asset()).safeTransferFrom(msg.sender, address(this), assets);
 
@@ -126,7 +135,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         require(receiver != address(0), "AutoCompounder: Invalid receiver address");
 
         // Calculate underlying amount to withdraw using exchange rate
-        underlyingAmount = aTokenAmount * exchangeRate();
+        underlyingAmount = aTokenAmount.mulDivDown(exchangeRate(), PRECISION);
 
         // Burn aToken
         _burn(msg.sender, aTokenAmount);
@@ -146,7 +155,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         // Check if reward is available
         uint256 reward = IRewards(vault()).getUserReward(address(this), usdc());
 
-        if (reward != 0) {
+        if (reward >= MIN_REWARD) {
             // Claim reward
             IRewards(vault()).claimAllReward(0, address(this));
 
@@ -166,7 +175,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
 
             emit Claim(amounts[1]);
         } else {
-            revert ZeroReward();
+            revert InsufficientReward(reward);
         }
     }
 
@@ -178,7 +187,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         uint256 vTotalSupply = _vault.totalSupply();
         uint256 aTotalSupply = totalSupply();
 
-        return aTotalSupply == 0 ? 1 : vTotalSupply / aTotalSupply;
+        return aTotalSupply == 0 ? PRECISION : aTotalSupply.mulDivDown(PRECISION, vTotalSupply);
     }
 
     /**

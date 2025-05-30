@@ -10,6 +10,8 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+import {FixedPointMathLib} from "../math/FixedPointMathLib.sol";
+
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -32,14 +34,18 @@ import {IRewards} from "../erc4626/interfaces/IRewards.sol";
  */
 contract Slice is ISlice, ERC20, Ownable, ERC165 {
     using SafeERC20 for IERC20;
+    using FixedPointMathLib for uint256;
+
+    // Precision factor
+    uint256 private constant PRECISION = 1e18;
 
     // Basis points for calculations with percentages
-    uint16 private constant BASIS_POINTS = 10000;
+    uint256 private constant BASIS_POINTS = 10000;
 
     // Max tokens amount to store
-    uint8 private constant MAX_TOKENS_AMOUNT = 10;
+    uint256 private constant MAX_TOKENS_AMOUNT = 10;
 
-    // Slice group
+    // Slice metadata URI
     string private _metadataUri;
 
     // Allocations array for each aToken stored
@@ -197,7 +203,7 @@ contract Slice is ISlice, ERC20, Ownable, ERC165 {
 
         // Check allocation exists
         if (getTokenAllocation(aToken).aToken == address(0)) revert AllocationNotFound(aToken);
- 
+
         for (uint256 i = 0; i < _allocations.length; i++) {
             if (_allocations[i].aToken == aToken) {
                 _allocations[i].targetPercentage = newPercentage;
@@ -224,24 +230,32 @@ contract Slice is ISlice, ERC20, Ownable, ERC165 {
         uint256 amountToWithdraw,
         uint256 exchangeRate
     ) public returns (uint256 withdrawnAmount) {
-        address _vault = IAutoCompounder(aToken).vault();
-        uint256 maxWithdrawAmount = IERC4626(_vault).maxWithdraw(aToken);
+        address vault = IAutoCompounder(aToken).vault();
+        uint256 maxWithdrawAmount = IERC4626(vault).maxWithdraw(aToken);
 
-        uint256 neededUnderlying = amountToWithdraw / exchangeRate; // Convert aToken to underlying for checks
+        uint256 neededUnderlying = amountToWithdraw.mulDivDown(PRECISION, exchangeRate); // Convert aToken to underlying for checks
 
         if (maxWithdrawAmount == 0) return 0; // Return 0 if tokens are locked
 
-        if (ERC165Checker.supportsInterface(_vault, type(IERC7540).interfaceId)) {
-            IERC7540(_vault).requestRedeem(neededUnderlying, aToken, aToken); // Request full needed amount to meet ideal balance in next iteration
+        if (ERC165Checker.supportsInterface(vault, type(IERC7540).interfaceId)) {
+            IERC7540(vault).requestRedeem(neededUnderlying, aToken, aToken); // Request full needed amount to meet ideal balance in next iteration
 
             if (maxWithdrawAmount < neededUnderlying) {
-                return IAutoCompounder(aToken).withdraw(maxWithdrawAmount * exchangeRate, address(this)); // Withdraw max possible amount
+                return
+                    IAutoCompounder(aToken).withdraw(
+                        maxWithdrawAmount.mulDivDown(exchangeRate, PRECISION),
+                        address(this)
+                    ); // Withdraw max possible amount
             } else {
                 return IAutoCompounder(aToken).withdraw(amountToWithdraw, address(this)); // Withdraw needed amount
             }
         } else {
             if (maxWithdrawAmount < neededUnderlying) {
-                return IAutoCompounder(aToken).withdraw(maxWithdrawAmount * exchangeRate, address(this)); // Withdraw max possible amount
+                return
+                    IAutoCompounder(aToken).withdraw(
+                        maxWithdrawAmount.mulDivDown(exchangeRate, PRECISION),
+                        address(this)
+                    ); // Withdraw max possible amount
             } else {
                 return IAutoCompounder(aToken).withdraw(amountToWithdraw, address(this)); // Withdraw needed amount
             }
@@ -278,7 +292,7 @@ contract Slice is ISlice, ERC20, Ownable, ERC165 {
             targetUnderlyingAmount = (targetValue * (10 ** IERC20Metadata(asset).decimals())) / underlyingPrice; // Target amount in underlying
 
             // Target amount in aToken
-            aTokenTargetAmount = targetUnderlyingAmount * aTokenToUnderlyingRate;
+            aTokenTargetAmount = targetUnderlyingAmount.mulDivDown(aTokenToUnderlyingRate, PRECISION);
 
             aTokenBalance = _balances[aToken];
 
@@ -357,7 +371,7 @@ contract Slice is ISlice, ERC20, Ownable, ERC165 {
             currentExchangeRate = IAutoCompounder(aToken).exchangeRate();
 
             difference = aTokenTargetAmount - balance;
-            neededUnderlying = difference / currentExchangeRate;
+            neededUnderlying = difference.mulDivDown(PRECISION, currentExchangeRate);
 
             if (availableReward > 0) {
                 difference > balance
@@ -427,7 +441,7 @@ contract Slice is ISlice, ERC20, Ownable, ERC165 {
         underlyingPrice = uint256(getChainlinkDataFeedLatestAnswer(asset));
 
         // Get Underlying value in aToken
-        underlyingValue = balance * aTokenToUnderlyingRate;
+        underlyingValue = balance.mulDivDown(aTokenToUnderlyingRate, PRECISION);
 
         // Get underlying value in USD
         currentValue = (underlyingValue * underlyingPrice) / (10 ** IERC20Metadata(aToken).decimals());

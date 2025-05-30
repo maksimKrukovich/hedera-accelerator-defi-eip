@@ -2,23 +2,12 @@ import { anyValue, ethers, expect, time } from "../setup";
 import { PrivateKey, Client, AccountId } from "@hashgraph/sdk";
 import { ZeroAddress } from "ethers";
 import { VaultToken, BasicVault, AsyncVault, AutoCompounder, UniswapRouterMock } from "../../typechain-types";
-import hre from "hardhat";
 
 import factoryAbi from "@uniswap/v2-core/build/UniswapV2Factory.json";
 import routerAbi from "@uniswap/v2-periphery/build/UniswapV2Router02.json";
 import wethAbi from "@uniswap/v2-periphery/build/WETH9.json";
 
 import { VaultType, deployBasicVault, deployAsyncVault } from "./helper";
-
-// constants
-// const testAccountAddress = "0x934b9afc8be0f78f698753a8f67131fa58cd9884";
-// const operatorPrKeyTest = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY_TEST || '');
-// const operatorAccountIdTest = AccountId.fromString(process.env.ACCOUNT_ID_TEST || '');
-
-// const operatorPrKey = PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY || '');
-// const operatorAccountId = AccountId.fromString(process.env.ACCOUNT_ID || '');
-
-// const testAccount = new hre.ethers.Wallet(process.env.PRIVATE_KEY_TEST!, ethers.provider);
 
 // Zero fee
 const feeConfig = {
@@ -72,7 +61,7 @@ describe("AutoCompounder", function () {
         ) as VaultToken;
         await stakingToken.waitForDeployment();
 
-        // await stakingToken.mint(testAccount.address, ethers.parseUnits("500000000", 18));
+        await stakingToken.mint(staker.address, ethers.parseUnits("500000000", 18));
 
         const RewardToken = await ethers.getContractFactory("VaultToken");
         const rewardToken = await RewardToken.deploy(
@@ -105,6 +94,7 @@ describe("AutoCompounder", function () {
             rewardToken,
             client,
             owner,
+            staker,
         };
     }
 
@@ -120,6 +110,9 @@ describe("AutoCompounder", function () {
                 owner.address,
                 { from: owner.address, gasLimit: 3000000 }
             );
+
+            const aTokenAmountToReceive = amountToDeposit * ethers.parseUnits("1", 18) / await autoCompounder.exchangeRate();
+            console.log("aTokenAmountToReceive", aTokenAmountToReceive);
 
             console.log(tx.hash);
 
@@ -142,7 +135,7 @@ describe("AutoCompounder", function () {
             ).to.changeTokenBalance(
                 autoCompounder,
                 owner.address,
-                amountToDeposit / await autoCompounder.exchangeRate()
+                aTokenAmountToReceive
             );
         });
 
@@ -159,6 +152,9 @@ describe("AutoCompounder", function () {
             );
 
             console.log("Deposit: ", tx.hash);
+
+            const aTokenAmountToReceive = amountToDeposit * ethers.parseUnits("1", 18) / await autoCompounder.exchangeRate();
+            console.log("aTokenAmountToReceive", aTokenAmountToReceive);
 
             await expect(
                 tx
@@ -184,7 +180,7 @@ describe("AutoCompounder", function () {
             ).to.changeTokenBalance(
                 autoCompounder,
                 owner.address,
-                amountToDeposit / await autoCompounder.exchangeRate()
+                aTokenAmountToReceive
             );
         });
 
@@ -220,6 +216,9 @@ describe("AutoCompounder", function () {
             const rewardAmount = ethers.parseUnits("5000000", 18);
             const amountToDeposit = 170;
 
+            const exchangeRate = await autoCompounder.exchangeRate();
+            const withdrawnUnderlyingAmount = exchangeRate * amountToWithdraw / ethers.parseUnits("1", 18);
+
             await stakingToken.approve(autoCompounder.target, amountToDeposit);
 
             await autoCompounder.deposit(
@@ -234,9 +233,6 @@ describe("AutoCompounder", function () {
 
             await autoCompounder.approve(autoCompounder.target, 100);
             await vault.approve(autoCompounder.target, 1000);
-
-            const exchangeRate = await autoCompounder.exchangeRate();
-            const withdrawnUnderlyingAmount = exchangeRate * amountToWithdraw;
 
             // Warp time
             await time.increase(1000);
@@ -278,6 +274,9 @@ describe("AutoCompounder", function () {
             const rewardAmount = ethers.parseUnits("5000000", 18);
             const amountToDeposit = 170;
 
+            const exchangeRate = await autoCompounder.exchangeRate();
+            const withdrawnUnderlyingAmount = exchangeRate * amountToWithdraw / ethers.parseUnits("1", 18);
+
             await stakingToken.approve(autoCompounder.target, amountToDeposit);
 
             await autoCompounder.deposit(
@@ -293,11 +292,10 @@ describe("AutoCompounder", function () {
             await autoCompounder.approve(autoCompounder.target, 100);
             await vault.approve(autoCompounder.target, 1000);
 
-            const exchangeRate = await autoCompounder.exchangeRate();
-            const withdrawnUnderlyingAmount = exchangeRate * amountToWithdraw;
-
             // Warp time
             await time.increase(1000);
+
+            console.log('amountToWithdraw', amountToWithdraw);
 
             await vault.requestRedeem(amountToWithdraw, autoCompounder.target, autoCompounder.target);
 
@@ -407,6 +405,78 @@ describe("AutoCompounder", function () {
 
             await expect(
                 tx
+            ).to.emit(autoCompounder, "Claim");
+        });
+
+        it("Should claim reward and reinvest with 2 users", async function () {
+            const { autoCompounder, vault, uniswapV2Router02, stakingToken, rewardToken, owner, staker } = await deployFixture(VaultType.Basic);
+            const ownerAmountToDeposit = ethers.parseUnits("10", 18);
+            const stakerAmountToDeposit = 112412;
+            const rewardAmount = ethers.parseUnits("5000000", 18);
+
+            const latestBlock = await ethers.provider.getBlock("latest");
+            const timestamp = latestBlock?.timestamp;
+
+            // Add Liquidity
+            await rewardToken.approve(uniswapV2Router02.target, ethers.parseUnits("5000000", 18));
+            await stakingToken.approve(uniswapV2Router02.target, ethers.parseUnits("5000000", 18));
+
+            const addLiquidityTx = await uniswapV2Router02.addLiquidity(
+                rewardToken.target,
+                stakingToken.target,
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                owner.address,
+                timestamp! + 100
+            );
+
+            console.log("Add Liquidity Tx: ", addLiquidityTx.hash);
+
+            // Owner Deposit
+            await stakingToken.approve(autoCompounder.target, ownerAmountToDeposit);
+            await autoCompounder.deposit(
+                ownerAmountToDeposit,
+                owner.address,
+                { from: owner.address, gasLimit: 3000000 }
+            );
+
+            // Add reward to the Vault
+            await rewardToken.approve(vault.target, rewardAmount);
+            await vault.addReward(rewardToken.target, rewardAmount);
+
+            console.log("Shares: ", await vault.balanceOf(autoCompounder.target));
+            console.log("Reward: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
+
+            // Claim and reinvest
+            const ownerClaimTx = await autoCompounder.claim(
+                { from: owner.address, gasLimit: 3000000 }
+            );
+
+            // Staker Deposit
+            await stakingToken.connect(staker).approve(autoCompounder.target, stakerAmountToDeposit);
+            await autoCompounder.connect(staker).deposit(
+                stakerAmountToDeposit,
+                staker.address
+            );
+
+            // Add reward to the Vault
+            await rewardToken.approve(vault.target, rewardAmount);
+            await vault.addReward(rewardToken.target, rewardAmount);
+
+            console.log("Shares: ", await vault.balanceOf(autoCompounder.target));
+            console.log("Reward: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
+
+            const stakerClaimTx = await autoCompounder.connect(staker).claim();
+
+            console.log("Claim Tx", ownerClaimTx.hash);
+
+            await expect(
+                ownerClaimTx
+            ).to.emit(autoCompounder, "Claim");
+            await expect(
+                stakerClaimTx
             ).to.emit(autoCompounder, "Claim");
         });
     });
