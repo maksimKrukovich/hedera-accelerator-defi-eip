@@ -1,6 +1,5 @@
 import { ethers, upgrades } from 'hardhat';
 import { writeFile } from 'fs/promises';
-import { ZeroAddress } from 'ethers';
 import TestnetDeployments from '../data/deployments/chain-296.json';
 
 import {
@@ -126,102 +125,19 @@ async function deployComplianceModules(contracts: Record<string, any>): Promise<
   }
 }
 
-// Deploy Vault contracts
-async function deployVault(contracts: Record<string, any>): Promise<Record<string, any>> {
-  console.log(' - Deploying Vault...');
+async function deployVaultFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
+  console.log(' - Deploying Vault Factory...');
   const [deployer] = await ethers.getSigners();
-
-  const VaultToken = await ethers.getContractFactory("VaultToken");
-
-  const stakingToken = await VaultToken.deploy();
-  await stakingToken.waitForDeployment();
-
-  const rewardToken = await VaultToken.deploy();
-  await stakingToken.waitForDeployment();
-
-  const feeConfig = {
-    receiver: ZeroAddress,
-    token: ZeroAddress,
-    feePercentage: 0,
-  };
-
-  const BasicVault = await ethers.getContractFactory("BasicVault");
-  const vault = await BasicVault.deploy(
-    stakingToken.target,
-    "TST",
-    "TST",
-    feeConfig,
-    deployer.address,
-    deployer.address,
-    100,
-    500,
-    { from: deployer.address, gasLimit: 3000000 }
-  );
-  console.log("Hash ", vault.deploymentTransaction()?.hash);
-  await vault.waitForDeployment();
-
-  console.log("Vault deployed with address: ", await vault.getAddress());
 
   const VaultFactory = await ethers.getContractFactory("VaultFactory");
   const vaultFactory = await VaultFactory.deploy({ from: deployer.address });
-  console.log("Hash ", vaultFactory.deploymentTransaction()?.hash);
   await vaultFactory.waitForDeployment();
-
-  console.log("Vault Factory deployed with address: ", await vaultFactory.getAddress());
 
   return {
     ...contracts,
     vault: {
-      Vault: vault.target,
+      ...contracts.vault,
       VaultFactory: vaultFactory.target,
-      StakingToken: stakingToken.target,
-      RewardToken: rewardToken.target
-    }
-  };
-}
-
-// Deploy Async Vault contracts
-async function deployAsyncVault(contracts: Record<string, any>): Promise<Record<string, any>> {
-  console.log(' - Deploying Async Vault...');
-  const [deployer] = await ethers.getSigners();
-
-  const VaultToken = await ethers.getContractFactory("VaultToken");
-
-  const stakingToken = await VaultToken.deploy();
-  await stakingToken.waitForDeployment();
-
-  const rewardToken = await VaultToken.deploy();
-  await stakingToken.waitForDeployment();
-
-  const feeConfig = {
-    receiver: ZeroAddress,
-    token: ZeroAddress,
-    feePercentage: 0,
-  };
-
-  const AsyncVault = await ethers.getContractFactory("AsyncVault");
-  const asyncVault = await AsyncVault.deploy(
-    stakingToken.target,
-    "TST",
-    "TST",
-    feeConfig,
-    deployer.address,
-    deployer.address,
-    100,
-    500,
-    { from: deployer.address, gasLimit: 4000000 }
-  );
-  console.log("Hash ", asyncVault.deploymentTransaction()?.hash);
-  await asyncVault.waitForDeployment();
-
-  console.log("Vault deployed with address: ", await asyncVault.getAddress());
-
-  return {
-    ...contracts,
-    asyncVault: {
-      Vault: asyncVault.target,
-      StakingToken: stakingToken.target,
-      RewardToken: rewardToken.target
     }
   };
 }
@@ -233,11 +149,9 @@ async function deployAsyncVaultFactory(contracts: Record<string, any>): Promise<
 
   const AsyncVaultFactory = await ethers.getContractFactory("AsyncVaultFactory");
   const asyncVaultFactory = await AsyncVaultFactory.deploy(
-    { from: deployer.address, gasLimit: 40000000 }
+    { from: deployer.address, gasLimit: 1000000 }
   );
   await asyncVaultFactory.waitForDeployment();
-
-  console.log("Async Vault Factory deployed with address: ", await asyncVaultFactory.getAddress());
 
   return {
     ...contracts,
@@ -248,79 +162,18 @@ async function deployAsyncVaultFactory(contracts: Record<string, any>): Promise<
 }
 
 // Deploy Slice
-async function deploySlice(contracts: Record<string, any>): Promise<Record<string, any>> {
-  console.log(' - Deploying Slice...');
-  const [deployer] = await ethers.getSigners();
-
-  const Slice = await ethers.getContractFactory("Slice");
-  const slice = await Slice.deploy(
-    uniswapRouterAddress,
-    usdcAddress,
-    "S",
-    "S",
-    "ipfs://bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/m"
-  );
-  await slice.waitForDeployment();
+async function deploySliceFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
+  console.log(' - Deploying Slice Factory...');
 
   const SliceFactory = await ethers.getContractFactory("SliceFactory");
   const sliceFactory = await SliceFactory.deploy();
-  await slice.waitForDeployment();
+  await sliceFactory.waitForDeployment();
 
   return {
     ...contracts,
     slice: {
-      Slice: slice.target,
+      ...contracts.slice,
       SliceFactory: sliceFactory.target
-    }
-  };
-}
-
-// Deploy AutoCompounder
-async function deployAutoCompounder(contracts: Record<string, any>): Promise<Record<string, any>> {
-  console.log(' - Deploying AutoCompounder...');
-  const [deployer] = await ethers.getSigners();
-
-  const VaultToken = await ethers.getContractFactory("VaultToken");
-
-  const stakingToken = await VaultToken.deploy();
-  await stakingToken.waitForDeployment();
-
-  const feeConfig = {
-    receiver: ZeroAddress,
-    token: ZeroAddress,
-    feePercentage: 0,
-  };
-
-  const BasicVault = await ethers.getContractFactory("BasicVault");
-  const vault = await BasicVault.deploy(
-    stakingToken.target,
-    "TST",
-    "TST",
-    feeConfig,
-    deployer.address,
-    deployer.address,
-    100,
-    500,
-    { from: deployer.address, gasLimit: 3000000 }
-  );
-  console.log("Hash ", vault.deploymentTransaction()?.hash);
-  await vault.waitForDeployment();
-
-  const AutoCompounder = await ethers.getContractFactory("AutoCompounder");
-  const autoCompounder = await AutoCompounder.deploy(
-    uniswapRouterAddress,
-    vault.target,
-    usdcAddress,
-    "AToken",
-    "AToken",
-    ZeroAddress
-  );
-  await autoCompounder.waitForDeployment();
-
-  return {
-    ...contracts,
-    autoCompounder: {
-      AutoCompounder: autoCompounder.target
     }
   };
 }
@@ -328,7 +181,6 @@ async function deployAutoCompounder(contracts: Record<string, any>): Promise<Rec
 // Deploy AutoCompounder Factory
 async function deployAutoCompounderFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
   console.log(' - Deploying AutoCompounder Factory...');
-  const [deployer] = await ethers.getSigners();
 
   const AutoCompounderFactory = await ethers.getContractFactory("AutoCompounderFactory");
   const autoCompounderFactory = await AutoCompounderFactory.deploy();
@@ -342,38 +194,12 @@ async function deployAutoCompounderFactory(contracts: Record<string, any>): Prom
   };
 }
 
-// deploy HTS Token Factory
-async function deployHTSTokenFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
-  const [deployer] = await ethers.getSigners();
-
-  const htsToken = await ethers.deployContract("HTSToken", ["HTSTokenTest", "HTT", 8], {
-    signer: deployer,
-    value: ethers.parseEther("13"),
-    gasLimit: 4800000,
-  });
-  const htsTokenFactory = await ethers.deployContract("HTSTokenFactory", [], { gasLimit: 4800000 });
-
-  return {
-    ...contracts,
-    implementations: {
-      ...contracts.implementations,
-      HTSToken: await htsToken.getAddress(),
-    },
-    factories: {
-      ...contracts.factories,
-      HTSTokenFactory: await htsTokenFactory.getAddress(),
-    },
-  };
-}
-
-
 // deploy NFT metadata collection
-async function createERC721Metadata(contracts: Record<string, any>): Promise<Record<string, any>> {
+async function deployERC721Metadata(contracts: Record<string, any>): Promise<Record<string, any>> {
   const nftCollectionFactory = await ethers.getContractFactory('ERC721Metadata');
   const ERC721Metadata = await nftCollectionFactory.deploy("Buildings R Us", "BRUS",);
   await ERC721Metadata.waitForDeployment();
   const ERC721MetadataAddress = await ERC721Metadata.getAddress();
-
 
   return {
     ...contracts,
@@ -385,13 +211,15 @@ async function createERC721Metadata(contracts: Record<string, any>): Promise<Rec
 }
 
 // deploy upgradeable BuildingFactory
-async function createBuildingFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
+async function deployBuildingFactory(contracts: Record<string, any>): Promise<Record<string, any>> {
   const buildingFact = await ethers.getContractFactory('Building');
   const buildingBeacon = await upgrades.deployBeacon(buildingFact);
+  await buildingBeacon.waitForDeployment();
   const buildingBeaconAddress = await buildingBeacon.getAddress();
 
-  const buildingFactoryFactory = await ethers.getContractFactory('BuildingFactory');
-  const buildingFactoryBeacon = await upgrades.deployBeacon(buildingFactoryFactory);
+  const buildingFactoryFactory = await ethers.getContractFactory('BuildingFactory', { libraries: contracts.libraries });
+  const buildingFactoryBeacon = await upgrades.deployBeacon(buildingFactoryFactory, { unsafeAllow: ["external-library-linking"] } );
+  await buildingFactoryBeacon.waitForDeployment();
   const buildingFactoryBeaconAddress = await buildingFactoryBeacon.getAddress();
   const identityGateway = await ethers.getContractAt('IdentityGateway', contracts.factories.IdentityGateway);
   const identityGatewayAddress = await identityGateway.getAddress();
@@ -403,24 +231,22 @@ async function createBuildingFactory(contracts: Record<string, any>): Promise<Re
   const trexGateway = await ethers.getContractAt('TREXGateway', trexGatewayAddress);
 
   // Beacon Upgradable Pattern for Treasury
-  const treasuryImplementation = await ethers.deployContract('Treasury');
+  const treasuryImplementation = await ethers.deployContract('Treasury', { gasLimit: 1000000 });
+  await treasuryImplementation.waitForDeployment();
   const treasuryImplementationAddress = await treasuryImplementation.getAddress();
   const treasuryBeaconFactory = await ethers.getContractFactory('TreasuryBeacon');
-  const treasuryBeacon = await treasuryBeaconFactory.deploy(treasuryImplementationAddress)
+  const treasuryBeacon = await treasuryBeaconFactory.deploy(treasuryImplementationAddress, { gasLimit: 1000000 })
   await treasuryBeacon.waitForDeployment();
   const treasuryBeaconAddress = await treasuryBeacon.getAddress();
 
   // Beacon Upgradable Pattern for Treasury
   const governanceImplementation = await ethers.deployContract('BuildingGovernance');
+  await governanceImplementation.waitForDeployment();
   const governanceImplementationAddress = await governanceImplementation.getAddress();
   const governanceBeaconFactory = await ethers.getContractFactory('BuildingGovernanceBeacon');
-  const governanceBeacon = await governanceBeaconFactory.deploy(governanceImplementationAddress)
+  const governanceBeacon = await governanceBeaconFactory.deploy(governanceImplementationAddress, { gasLimit: 1000000 })
   await governanceBeacon.waitForDeployment();
   const governanceBeaconAddress = await governanceBeacon.getAddress();
-
-  // deploy new ERC20 to be used as USDC for demo/phase1 porpose
-  const usdcMock = await ethers.deployContract('ERC20Mock', ["USDC", "USDC", 6]);
-  const usdcMockAddress = await usdcMock.getAddress();
 
   const buildingFactory = await upgrades.deployBeaconProxy(
     buildingFactoryBeaconAddress,
@@ -431,9 +257,8 @@ async function createBuildingFactory(contracts: Record<string, any>): Promise<Re
       uniswapFactoryAddress,
       identityGatewayAddress,
       trexGatewayAddress,
-      usdcMockAddress,
+      usdcAddress,
       buildingBeaconAddress,
-      contracts.vault.VaultFactory,
       treasuryBeaconAddress,
       governanceBeaconAddress
     ],
@@ -486,6 +311,21 @@ async function deployExchange(contracts: Record<string, any>): Promise<Record<st
   }
 }
 
+async function deployLibraries(contracts: Record<string, any>): Promise<Record<string, any>> { 
+  const libraries = {
+    "BuildingTokenLib" : await (await (await ethers.deployContract("BuildingTokenLib")).waitForDeployment()).getAddress(),
+    "BuildingGovernanceLib" : await (await (await ethers.deployContract("BuildingGovernanceLib")).waitForDeployment()).getAddress(),
+    "BuildingTreasuryLib" : await (await (await ethers.deployContract("BuildingTreasuryLib")).waitForDeployment()).getAddress(),
+    "BuildingVaultLib" : await (await (await ethers.deployContract("BuildingVaultLib")).waitForDeployment()).getAddress(),
+    "BuildingAutoCompounderLib" : await (await (await ethers.deployContract("BuildingAutoCompounderLib")).waitForDeployment()).getAddress(),
+  }
+
+  return {
+    ...contracts,
+    libraries
+  }
+}
+
 async function logContracts(contracts: Record<string, any>): Promise<Record<string, any>> {
   console.log(contracts);
   return contracts;
@@ -513,15 +353,13 @@ init()
   // add subsequent deployment script after this comment
   .then(deployERC3643)
   .then(deployComplianceModules)
-  .then(deployVault)
-  .then(deployAsyncVault)
+  .then(deployVaultFactory)
   .then(deployAsyncVaultFactory)
-  .then(deploySlice)
-  .then(deployAutoCompounder)
+  .then(deploySliceFactory)
   .then(deployAutoCompounderFactory)
-  .then(deployHTSTokenFactory)
-  .then(createERC721Metadata)
-  .then(createBuildingFactory)
+  .then(deployERC721Metadata)
+  .then(deployLibraries)
+  .then(deployBuildingFactory)
   .then(deployAudit)
   .then(deployExchange)
   .then(exportDeploymentVersion)
