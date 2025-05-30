@@ -520,7 +520,7 @@ describe("Slice", function () {
             // Check user received sTokens
             await expect(
                 depositAutoCompounderTx1
-            ).to.changeTokenBalance(slice, owner.address, amountToDeposit / exchangeRate);
+            ).to.changeTokenBalance(slice, owner.address, amountToDeposit * ethers.parseUnits("1", 18) / exchangeRate);
         });
 
         it("Should revert if invalid amount to deposit", async function () {

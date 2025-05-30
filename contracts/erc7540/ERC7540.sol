@@ -22,21 +22,6 @@ abstract contract ERC7540 is AsyncVaultStorage, ERC4626, IERC7540 {
     using ERC7540Lib for ERC7540_Request;
     using ERC7540Lib for ERC7540_FilledRequest;
 
-    // Saves the ERC7540 deposit requests when calling `requestDeposit`
-    // mapping(address => ERC7540_Request) internal _pendingDepositRequest;
-
-    // // Saves the ERC7540 redeem requests when calling `requestRedeem`
-    // mapping(address => ERC7540_Request) internal _pendingRedeemRequest;
-
-    // // Saves the result of the deposit after the request has been processed
-    // mapping(address => ERC7540_FilledRequest) internal _claimableDepositRequest;
-
-    // // Saves the result of the redeem after the request has been processed
-    // mapping(address => ERC7540_FilledRequest) internal _claimableRedeemRequest;
-
-    // // ERC7540 operator approvals
-    // mapping(address controller => mapping(address operator => bool)) public isOperator;
-
     /**
      * @notice OperatorSet event.
      * @dev Emitted when `controller` gives allowance to `operator`.

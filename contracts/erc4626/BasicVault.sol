@@ -85,7 +85,7 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
         require((shares = previewDeposit(assets)) != 0, "HederaVault: Zero shares");
         _deposit(_msgSender(), receiver, assets, shares);
 
-        _afterDeposit(assets, receiver);
+        _afterDeposit(assets);
     }
 
     /**
@@ -106,7 +106,7 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
         require((assets = previewMint(shares)) != 0, "HederaVault: Zero shares");
         _deposit(_msgSender(), receiver, assets, shares);
 
-        _afterDeposit(assets, receiver);
+        _afterDeposit(assets);
     }
 
     /**
@@ -196,9 +196,8 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
      * @dev Updates user state after deposit and mint calls.
      *
      * @param amount The amount of shares.
-     * @param rewardReceiver The reward receiver address.
      */
-    function _afterDeposit(uint256 amount, address rewardReceiver) internal {
+    function _afterDeposit(uint256 amount) internal {
         BasicVaultData storage $ = _getBasicVaultStorage();
         if (!$.userContribution[msg.sender].exist) {
             uint256 rewardTokensSize = $.rewardTokens.length;
@@ -211,16 +210,9 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
             $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
             $.userContribution[msg.sender].exist = true;
         } else {
-            if ($.userContribution[msg.sender].sharesAmount == 0) {
-                $.userContribution[msg.sender].sharesAmount += amount;
-                $.userContribution[msg.sender].totalLocked += amount;
-                $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
-            } else {
-                claimAllReward(0, rewardReceiver);
-                $.userContribution[msg.sender].sharesAmount += amount;
-                $.userContribution[msg.sender].totalLocked += amount;
-                $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
-            }
+            $.userContribution[msg.sender].sharesAmount += amount;
+            $.userContribution[msg.sender].totalLocked += amount;
+            $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
         }
     }
 

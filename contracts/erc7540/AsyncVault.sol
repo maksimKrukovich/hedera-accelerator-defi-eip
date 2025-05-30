@@ -147,7 +147,7 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      */
     function deposit(uint256 assets, address to, address controller) public override returns (uint256 shares) {
         shares = super.deposit(assets, to, controller);
-        _afterDeposit(assets, to);
+        _afterDeposit(assets);
     }
 
     /**
@@ -171,7 +171,7 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      */
     function mint(uint256 shares, address to, address controller) public override returns (uint256 assets) {
         assets = super.mint(shares, to, controller);
-        _afterDeposit(assets, to);
+        _afterDeposit(assets);
     }
 
     /**
@@ -260,9 +260,8 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
      * @dev Updates user state after deposit and mint calls.
      *
      * @param _amount The amount of shares.
-     * @param _rewardReceiver The reward receiver.
      */
-    function _afterDeposit(uint256 _amount, address _rewardReceiver) internal {
+    function _afterDeposit(uint256 _amount) internal {
         AsyncVaultData storage $ = _getAsyncVaultStorage();
 
         if (!$.userContribution[msg.sender].exist) {
@@ -276,16 +275,9 @@ contract AsyncVault is ERC7540, ERC165, FeeConfiguration, Ownable {
             $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
             $.userContribution[msg.sender].exist = true;
         } else {
-            if ($.userContribution[msg.sender].sharesAmount == 0) {
-                $.userContribution[msg.sender].sharesAmount += _amount;
-                $.userContribution[msg.sender].totalLocked += _amount;
-                $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
-            } else {
-                claimAllReward(0, _rewardReceiver);
-                $.userContribution[msg.sender].sharesAmount += _amount;
-                $.userContribution[msg.sender].totalLocked += _amount;
-                $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
-            }
+            $.userContribution[msg.sender].sharesAmount += _amount;
+            $.userContribution[msg.sender].totalLocked += _amount;
+            $.userContribution[msg.sender].depositLockCheckpoint = block.timestamp;
         }
     }
 

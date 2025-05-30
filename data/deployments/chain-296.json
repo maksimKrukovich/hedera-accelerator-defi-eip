@@ -29,24 +29,24 @@
   },
   "vault": {
     "Vault": "0x66940FCa4F49bF79EB2505a9b634C93faB759129",
-    "VaultFactory": "0x6E90d5281cAd17122e6B96fbf043EB8b25340d85",
+    "VaultFactory": "0xDBD98B45b46eA4E4eD5EE7F778dE686725e7E8AF",
     "StakingToken": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
     "RewardToken": "0x11724c1E87cb63eb570383CFC260F597F71f9605"
   },
   "slice": {
     "Slice": "0x2dc9C11744FDd592c4a3033D4319d86F3A9E6fc0",
-    "SliceFactory": "0x2676b4b821535741C4E518C08502E1d44dedFF51"
+    "SliceFactory": "0xbaD495dF0cD0434C6c3cD1EF1146E0a27591074a"
   },
   "autoCompounder": {
     "AutoCompounder": "0xa250aeA16b9Aed0996Dd33D70d91536e523A9Fc2",
-    "AutoCompounderFactory": "0x2fE129947Dc8378aebfa84352FD577DCd07Ce72B"
+    "AutoCompounderFactory": "0x33138c744f18FEbD41aB3C9D6a68496a8d7341De"
   },
   "nft": {
     "HederaNFT": "0xCeabeC99782c70840A8C11eE931473Ec6407678B"
   },
   "asyncVault": {
     "AsyncVault": "0x9d2cDA1A5e3A527Ce6E9eD733350AfEC00B3f83c",
-    "AsyncVaultFactory": "0xE43F1d6Bb080FC81Def2B8bf288943481884369E",
+    "AsyncVaultFactory": "0x307033F56EC883C89B1bA01227da75688C2A2392",
     "StakingToken": "0x0Ef8B789bB76752B70749f87EF9bE31082e465F9",
     "RewardToken": "0x11724c1E87cb63eb570383CFC260F597F71f9605"
   }

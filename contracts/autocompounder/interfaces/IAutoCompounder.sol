@@ -40,9 +40,9 @@ interface IAutoCompounder {
     event Deposit(address indexed caller, uint256 assets, uint256 aTokenMinted);
 
     /**
-     * @dev Thrown during claim process if there is no reward to reinvest.
+     * @dev Thrown during claim process if there is insufficient reward to reinvest.
      */
-    error ZeroReward();
+    error InsufficientReward(uint256 reward);
 
     /**
      * @dev Deposits staking token to the Vault and returns shares.
