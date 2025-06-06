@@ -31,13 +31,23 @@ interface IAutoCompounder {
     event Withdraw(address indexed caller, uint256 aTokenAmount, uint256 underlyingAmount);
     /**
      * @notice Deposit event.
-     * @dev Emitted after contract initialization, when aToken was deployed.
+     * @dev Emitted when anyone deposit to AutoCompounder contract and get aToken.
      *
      * @param caller The caller address.
+     * @param receiver The aToken receiver address.
      * @param assets The assets amount to deposit.
      * @param aTokenMinted The minted aToken amount.
      */
-    event Deposit(address indexed caller, uint256 assets, uint256 aTokenMinted);
+    event Deposit(address indexed caller, address indexed receiver, uint256 assets, uint256 aTokenMinted);
+    /**
+     * @notice UserClaimedReward event.
+     * @dev Emitted when any autocompounder depositor claims his reward share.
+     *
+     * @param caller The caller address.
+     * @param receiver The reward receiver address.
+     * @param reward The received reward share.
+     */
+    event UserClaimedReward(address indexed caller, address indexed receiver, uint256 reward);
 
     /**
      * @dev Thrown during claim process if there is insufficient reward to reinvest.

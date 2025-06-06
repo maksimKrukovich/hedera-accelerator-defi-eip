@@ -26,6 +26,7 @@ abstract contract BasicVaultStorage {
         uint256 totalLocked;
         uint256 totalReleased;
         uint256 depositLockCheckpoint;
+        mapping(address => uint256) rewardAmountSnapshot;
         mapping(address => uint256) lastClaimedAmountT;
         bool exist;
     }
@@ -55,7 +56,7 @@ abstract contract BasicVaultStorage {
      */
     event RewardAdded(address indexed rewardToken, uint256 amount);
 
-     /**
+    /**
      * @notice RewardClaimed event.
      * @dev Emitted when permissioned user claims reward from the Vault.
      *

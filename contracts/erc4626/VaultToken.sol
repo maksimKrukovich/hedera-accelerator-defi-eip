@@ -5,7 +5,7 @@ pragma solidity 0.8.24;
 import {ERC20} from "./ERC20.sol";
 
 contract VaultToken is ERC20 {
-    constructor() ERC20("VaultToken", "VLT", 18) {
+    constructor(uint8 decimals) ERC20("VaultToken", "VLT", decimals) {
         _mint(msg.sender, 500000000 * 10 ** 18);
     }
 

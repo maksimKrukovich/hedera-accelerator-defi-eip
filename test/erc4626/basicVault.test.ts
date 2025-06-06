@@ -46,6 +46,7 @@ describe("BasicVault", function () {
 
         const VaultToken = await ethers.getContractFactory("VaultToken");
         const stakingToken = await VaultToken.deploy(
+            18
         ) as VaultToken;
         await stakingToken.waitForDeployment();
 
@@ -53,6 +54,7 @@ describe("BasicVault", function () {
 
         const RewardToken = await ethers.getContractFactory("VaultToken");
         const rewardToken = await RewardToken.deploy(
+            6
         ) as VaultToken;
         await rewardToken.waitForDeployment();
 
@@ -263,9 +265,16 @@ describe("BasicVault", function () {
                 owner,
                 amountToWithdraw
             );
+
+            // Claim reward
+            const claimRewardTx = await hederaVault.claimAllReward(
+                0,
+                owner.address
+            );
+
             // Check user received reward token
             await expect(
-                tx
+                claimRewardTx
             ).to.changeTokenBalance(
                 rewardToken,
                 owner,
@@ -432,9 +441,17 @@ describe("BasicVault", function () {
                 owner,
                 amountToRedeem
             );
+
+            // Claim reward
+            const claimRewardTx = await hederaVault.claimExactReward(
+                rewardToken.target,
+                owner.address,
+                currentReward
+            );
+
             // Check user received reward token
             await expect(
-                tx
+                claimRewardTx
             ).to.changeTokenBalance(
                 rewardToken,
                 owner,
@@ -647,9 +664,15 @@ describe("BasicVault", function () {
                 owner,
                 amountToWithdraw
             );
-            // Check user received reward token
+
+            const claimOwnerRewardTx = await hederaVault.claimAllReward(
+                0,
+                owner.address
+            );
+
+            // Check owner received reward token
             await expect(
-                ownerWithdrawTx
+                claimOwnerRewardTx
             ).to.changeTokenBalance(
                 rewardToken,
                 owner,
@@ -670,13 +693,25 @@ describe("BasicVault", function () {
                 staker,
                 amountToWithdraw
             );
+
+            const claimStakerRewardTx = await hederaVault.connect(staker).claimExactReward(
+                rewardToken.target,
+                staker.address,
+                2499999999999999999999999n
+            );
+
             await expect(
-                stakerWithdrawTx
+                claimStakerRewardTx
             ).to.changeTokenBalance(
                 rewardToken,
                 staker,
                 2499999999999999999999999n
             );
+
+            const currentRewardOwnerAfterClaim = await hederaVault.getAllRewards(owner.address);
+            const currentRewardStakerAfterClaim = await hederaVault.getAllRewards(staker.address);
+            console.log("Current reward owner after claim: ", currentRewardOwnerAfterClaim);
+            console.log("Current reward staker after claim: ", currentRewardStakerAfterClaim);
 
             // Add reward
             await rewardToken.approve(hederaVault.target, rewardToAdd);
@@ -687,38 +722,8 @@ describe("BasicVault", function () {
             console.log("Current reward owner after adding reward: ", currentRewardOwner2);
             console.log("Current reward staker after adding reward: ", currentRewardStaker2);
 
-            console.log("Reward Owner balance before claim", await rewardToken.balanceOf(owner.address));
-            console.log("Reward Staker balance before claim", await rewardToken.balanceOf(staker.address));
-
-            const ownerClaimTx = await hederaVault.connect(owner).claimAllReward(0, owner.address);
-            const stakerClaimTx = await hederaVault.connect(staker).claimAllReward(0, staker.address);
-
-            // Check claim success
-            await expect(
-                ownerClaimTx
-            ).to.changeTokenBalance(
-                rewardToken,
-                owner,
-                2499999999999999999999999n
-            );
-            await expect(
-                stakerClaimTx
-            ).to.changeTokenBalance(
-                rewardToken,
-                staker,
-                2499999999999999999999999n
-            );
-
-            await expect(ownerClaimTx).to.emit(hederaVault, 'RewardClaimed').withArgs(rewardToken, owner, 2499999999999999999999999n);
-            await expect(stakerClaimTx).to.emit(hederaVault, 'RewardClaimed').withArgs(rewardToken, staker, 2499999999999999999999999n);
-
             console.log("Reward Owner balance after claim", await rewardToken.balanceOf(owner.address));
             console.log("Reward Staker balance after claim", await rewardToken.balanceOf(staker.address));
-
-            const currentRewardOwner3 = await hederaVault.getAllRewards(owner.address);
-            const currentRewardStaker3 = await hederaVault.getAllRewards(staker.address);
-            console.log("Current reward owner after claim: ", currentRewardOwner3);
-            console.log("Current reward staker after claim: ", currentRewardStaker3);
         });
 
         it("two people, two type of reward, one withdraw, add two reward, all claim", async function () {

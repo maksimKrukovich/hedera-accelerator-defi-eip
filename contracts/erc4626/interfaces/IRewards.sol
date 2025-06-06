@@ -23,7 +23,16 @@ interface IRewards {
     function claimAllReward(uint256 _startPosition, address receiver) external returns (uint256, uint256);
 
     /**
-     * @dev add reward tokens to the vault.
+     * @dev Claims exact pending reward for the caller.
+     *
+     * @param rewardToken The exact reward token address.
+     * @param receiver The reward receiver address.
+     * @param amount The amount to claim.
+     */
+    function claimExactReward(address rewardToken, address receiver, uint256 amount) external;
+
+    /**
+     * @dev Adds reward tokens to the vault.
      *
      * @param token addres of the reward token
      * @param amount amount of tokens to add
