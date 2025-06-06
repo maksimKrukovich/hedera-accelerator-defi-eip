@@ -58,6 +58,7 @@ describe("AutoCompounder", function () {
         // Vault
         const VaultToken = await ethers.getContractFactory("VaultToken");
         const stakingToken = await VaultToken.deploy(
+            18
         ) as VaultToken;
         await stakingToken.waitForDeployment();
 
@@ -65,6 +66,7 @@ describe("AutoCompounder", function () {
 
         const RewardToken = await ethers.getContractFactory("VaultToken");
         const rewardToken = await RewardToken.deploy(
+            6
         ) as VaultToken;
         await rewardToken.waitForDeployment();
 
@@ -119,7 +121,7 @@ describe("AutoCompounder", function () {
             await expect(
                 tx
             ).to.emit(autoCompounder, "Deposit")
-                .withArgs(owner.address, amountToDeposit, anyValue);
+                .withArgs(owner.address, owner.address, amountToDeposit, anyValue);
 
             // Check share token was transferred to contract
             await expect(
@@ -159,7 +161,7 @@ describe("AutoCompounder", function () {
             await expect(
                 tx
             ).to.emit(autoCompounder, "Deposit")
-                .withArgs(owner.address, amountToDeposit, anyValue);
+                .withArgs(owner.address, owner.address, amountToDeposit, anyValue);
 
             await expect(
                 tx
@@ -408,7 +410,7 @@ describe("AutoCompounder", function () {
             ).to.emit(autoCompounder, "Claim");
         });
 
-        it("Should claim reward and reinvest with 2 users", async function () {
+        it("2 deposits, 2 reinvests", async function () {
             const { autoCompounder, vault, uniswapV2Router02, stakingToken, rewardToken, owner, staker } = await deployFixture(VaultType.Basic);
             const ownerAmountToDeposit = ethers.parseUnits("10", 18);
             const stakerAmountToDeposit = 112412;
@@ -447,7 +449,7 @@ describe("AutoCompounder", function () {
             await vault.addReward(rewardToken.target, rewardAmount);
 
             console.log("Shares: ", await vault.balanceOf(autoCompounder.target));
-            console.log("Reward: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
+            console.log("AC Reward: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
 
             // Claim and reinvest
             const ownerClaimTx = await autoCompounder.claim(
@@ -466,7 +468,7 @@ describe("AutoCompounder", function () {
             await vault.addReward(rewardToken.target, rewardAmount);
 
             console.log("Shares: ", await vault.balanceOf(autoCompounder.target));
-            console.log("Reward: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
+            console.log("AC Reward: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
 
             const stakerClaimTx = await autoCompounder.connect(staker).claim();
 
@@ -477,6 +479,104 @@ describe("AutoCompounder", function () {
             ).to.emit(autoCompounder, "Claim");
             await expect(
                 stakerClaimTx
+            ).to.emit(autoCompounder, "Claim");
+        });
+
+        it("2 deposits, 1 reward claim, reinvest what's left", async function () {
+            const { autoCompounder, vault, uniswapV2Router02, stakingToken, rewardToken, owner, staker } = await deployFixture(VaultType.Basic);
+            const ownerAmountToDeposit = ethers.parseUnits("10", 18);
+            const stakerAmountToDeposit = 112412;
+            const rewardAmount = ethers.parseUnits("5000000", 18);
+
+            const latestBlock = await ethers.provider.getBlock("latest");
+            const timestamp = latestBlock?.timestamp;
+
+            // Initial deposit
+            await stakingToken.approve(vault.target, ethers.parseUnits("2", 18));
+            await vault.deposit(ethers.parseUnits("2", 18), owner.address);
+
+            // Add Liquidity
+            await rewardToken.approve(uniswapV2Router02.target, ethers.parseUnits("5000000", 18));
+            await stakingToken.approve(uniswapV2Router02.target, ethers.parseUnits("5000000", 18));
+
+            const addLiquidityTx = await uniswapV2Router02.addLiquidity(
+                rewardToken.target,
+                stakingToken.target,
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                ethers.parseUnits("5000000", 18),
+                owner.address,
+                timestamp! + 100
+            );
+
+            console.log("Add Liquidity Tx: ", addLiquidityTx.hash);
+
+            // Owner Deposit
+            await stakingToken.approve(autoCompounder.target, ownerAmountToDeposit);
+            await autoCompounder.deposit(
+                ownerAmountToDeposit,
+                owner.address,
+                { from: owner.address, gasLimit: 3000000 }
+            );
+
+            // Staker Deposit
+            await stakingToken.connect(staker).approve(autoCompounder.target, stakerAmountToDeposit);
+            await autoCompounder.connect(staker).deposit(
+                stakerAmountToDeposit,
+                staker.address
+            );
+
+            // Add reward to the Vault
+            await rewardToken.approve(vault.target, rewardAmount);
+            await vault.addReward(rewardToken.target, rewardAmount);
+
+            const ownerPendingReward = await autoCompounder.getPendingReward(owner.address);
+            const stakerPendingReward = await autoCompounder.getPendingReward(staker.address);
+
+            console.log("AC Reward: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
+            console.log("Owner AC pending reward: ", ownerPendingReward);
+            console.log("Staker AC pending reward: ", stakerPendingReward);
+
+            // Staker claim
+            const stakerClaimTx = await autoCompounder.connect(staker).claimExactUserReward(
+                staker.address
+            );
+
+            // Check event was emitted correctly
+            await expect(
+                stakerClaimTx
+            ).to.emit(autoCompounder, "UserClaimedReward")
+                .withArgs(staker.address, staker.address, stakerPendingReward);
+
+            // Check reward was transferred to staker
+            await expect(
+                stakerClaimTx
+            ).to.changeTokenBalance(
+                rewardToken,
+                staker.address,
+                stakerPendingReward
+            );
+            // Check no reward after claim
+            expect(
+                await autoCompounder.getPendingReward(staker.address)
+            ).to.be.eq(
+                0
+            );
+
+            console.log("AC Reward after staker claim: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
+
+            const ownerClaimReinvestTx = await autoCompounder.claim();
+
+            console.log("Claim Tx", ownerClaimReinvestTx.hash);
+
+            await rewardToken.approve(vault.target, rewardAmount);
+            await vault.addReward(rewardToken.target, rewardAmount);
+
+            console.log("AC Reward after reinvest: ", await vault.getUserReward(autoCompounder.target, rewardToken.target));
+
+            await expect(
+                ownerClaimReinvestTx
             ).to.emit(autoCompounder, "Claim");
         });
     });

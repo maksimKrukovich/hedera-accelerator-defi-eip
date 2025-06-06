@@ -43,6 +43,7 @@ abstract contract AsyncVaultStorage {
         uint256 totalLocked;
         uint256 totalReleased;
         uint256 depositLockCheckpoint;
+        mapping(address => uint256) rewardAmountSnapshot;
         mapping(address => uint256) lastClaimedAmountT;
         bool exist;
     }

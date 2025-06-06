@@ -129,7 +129,7 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
             revert ERC4626ExceededMaxWithdraw(owner, assets, maxAssets);
         }
 
-        _beforeWithdraw(assets, receiver);
+        _beforeWithdraw(assets);
 
         require((shares = previewWithdraw(assets)) != 0, "HederaVault: Zero shares");
         _withdraw(_msgSender(), receiver, owner, assets, shares);
@@ -155,7 +155,7 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
             revert ERC4626ExceededMaxRedeem(owner, shares, maxShares);
         }
 
-        _beforeWithdraw(assets, receiver);
+        _beforeWithdraw(assets);
 
         require((assets = previewRedeem(shares)) != 0, "HederaVault: Zero assets");
         _withdraw(_msgSender(), receiver, owner, assets, shares);
@@ -177,14 +177,44 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
                          INTERNAL HOOKS LOGIC
     //////////////////////////////////////////////////////////////*/
 
+    function _snapshotRewardAccrual(address user) internal {
+        BasicVaultData storage $ = _getBasicVaultStorage();
+        UserInfo storage userInfo = $.userContribution[user];
+
+        address rewardToken;
+        uint256 perShareCurrent;
+        uint256 perShareClaimed;
+        uint256 perShareDelta;
+        uint256 pendingReward;
+
+        for (uint256 i = 0; i < $.rewardTokens.length; ++i) {
+            rewardToken = $.rewardTokens[i];
+            RewardsInfo storage rewardInfo = $.tokensRewardInfo[rewardToken];
+
+            perShareCurrent = rewardInfo.amount;
+            perShareClaimed = userInfo.lastClaimedAmountT[rewardToken];
+            perShareDelta = perShareCurrent > perShareClaimed ? perShareCurrent - perShareClaimed : 0;
+
+            if (perShareDelta == 0 || userInfo.sharesAmount == 0) continue;
+
+            // Snapshot the delta as a pending reward user can claim after exit
+            pendingReward = (userInfo.sharesAmount * perShareDelta) / 1e18;
+
+            // Save into snapshot storage
+            userInfo.rewardAmountSnapshot[rewardToken] += pendingReward;
+
+            // Mark as "claimed" from the per-share logic
+            userInfo.lastClaimedAmountT[rewardToken] = perShareCurrent;
+        }
+    }
+
     /**
      * @dev Updates user state according to withdraw inputs.
      *
      * @param _amount The amount of shares.
-     * @param _rewardReceiver The reward receiver.
      */
-    function _beforeWithdraw(uint256 _amount, address _rewardReceiver) internal {
-        claimAllReward(0, _rewardReceiver);
+    function _beforeWithdraw(uint256 _amount) internal {
+        _snapshotRewardAccrual(msg.sender);
 
         BasicVaultData storage $ = _getBasicVaultStorage();
 
@@ -201,9 +231,10 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
         BasicVaultData storage $ = _getBasicVaultStorage();
         if (!$.userContribution[msg.sender].exist) {
             uint256 rewardTokensSize = $.rewardTokens.length;
+            address rewardToken;
             for (uint256 i; i < rewardTokensSize; i++) {
-                address token = $.rewardTokens[i];
-                $.userContribution[msg.sender].lastClaimedAmountT[token] = $.tokensRewardInfo[token].amount;
+                rewardToken = $.rewardTokens[i];
+                $.userContribution[msg.sender].lastClaimedAmountT[rewardToken] = $.tokensRewardInfo[rewardToken].amount;
             }
             $.userContribution[msg.sender].sharesAmount = amount;
             $.userContribution[msg.sender].totalLocked = amount;
@@ -272,6 +303,49 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
     }
 
     /**
+     * @dev Claims exact reward for the caller.
+     *
+     * @param rewardToken The address of reward to claim.
+     * @param receiver The reward receiver.
+     * @param amount The amount to claim.
+     */
+    function claimExactReward(address rewardToken, address receiver, uint256 amount) public {
+        BasicVaultData storage $ = _getBasicVaultStorage();
+
+        address sender = _msgSender();
+
+        require($.tokensRewardInfo[rewardToken].exist, "HederaVault: Incorrect reward token");
+
+        uint256 reward = getUserReward(sender, rewardToken);
+
+        require(reward >= amount, "HederaVault: Actual reward is less than passed");
+
+        uint256 shares = $.userContribution[sender].sharesAmount;
+
+        if (shares > 0) {
+            uint256 perShareClaimed = amount.mulDivDown(1e18, shares);
+            $.userContribution[sender].lastClaimedAmountT[rewardToken] += perShareClaimed;
+        }
+
+        // Reduce claimed from snapshot
+        uint256 snapshotAmount = $.userContribution[sender].rewardAmountSnapshot[rewardToken];
+        if (snapshotAmount > 0) {
+            if (snapshotAmount >= amount) {
+                $.userContribution[sender].rewardAmountSnapshot[rewardToken] -= amount;
+            } else {
+                $.userContribution[sender].rewardAmountSnapshot[rewardToken] = 0;
+            }
+        }
+
+        // Fee management
+        if (feeConfig.token != address(0)) amount = _deductFee(amount);
+
+        IERC20(rewardToken).safeTransfer(receiver, amount);
+
+        emit RewardClaimed(rewardToken, receiver, amount);
+    }
+
+    /**
      * @dev Claims all pending reward tokens for the caller.
      *
      * @param _startPosition The starting index in the reward token list from which to begin claiming rewards.
@@ -287,17 +361,34 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
 
         require(_rewardTokensSize != 0, "HederaVault: No reward tokens exist");
 
+        uint256 shares = $.userContribution[msg.sender].sharesAmount;
+
         for (uint256 i = _startPosition; i < _rewardTokensSize; i++) {
             _rewardToken = $.rewardTokens[i];
 
             _reward = getUserReward(msg.sender, _rewardToken);
-            $.userContribution[msg.sender].lastClaimedAmountT[_rewardToken] = $.tokensRewardInfo[_rewardToken].amount;
+
+            if (_reward == 0) continue;
+
+            if (shares > 0) {
+                uint256 perShareClaimed = _reward.mulDivDown(1e18, shares);
+                $.userContribution[msg.sender].lastClaimedAmountT[_rewardToken] += perShareClaimed;
+            }
+
+            uint256 snapshotAmount = $.userContribution[msg.sender].rewardAmountSnapshot[_rewardToken];
+            if (snapshotAmount > 0) {
+                if (snapshotAmount >= _reward) {
+                    $.userContribution[msg.sender].rewardAmountSnapshot[_rewardToken] -= _reward;
+                } else {
+                    $.userContribution[msg.sender].rewardAmountSnapshot[_rewardToken] = 0;
+                }
+            }
 
             // Fee management
             if (_feeToken != address(0)) {
                 _reward = _deductFee(_reward);
             }
-            
+
             IERC20(_rewardToken).safeTransfer(receiver, _reward);
 
             emit RewardClaimed(_rewardToken, receiver, _reward);
@@ -321,17 +412,32 @@ contract BasicVault is BasicVaultStorage, ERC4626, ERC165, FeeConfiguration, Own
         UserInfo storage cInfo = $.userContribution[_user];
         uint256 userStakingTokenTotal = cInfo.sharesAmount;
 
-        if (userStakingTokenTotal == 0) return 0;
+        // Get reward snapshot
+        uint256 rewardSnapshot = cInfo.rewardAmountSnapshot[_rewardToken];
 
-        uint256 perShareClaimedAmount = cInfo.lastClaimedAmountT[_rewardToken];
-        uint256 perShareUnclaimedAmount = perShareAmount - perShareClaimedAmount;
+        // No pending or snapshot reward
+        if (userStakingTokenTotal == 0 && rewardSnapshot == 0) return 0;
 
-        // Add precision to consider small rewards
-        unclaimedAmount = (perShareUnclaimedAmount * userStakingTokenTotal) / 1e18;
+        if (userStakingTokenTotal == 0) {
+            // Only snapshot reward remains
+            unclaimedAmount = rewardSnapshot;
+        } else {
+            uint256 perShareClaimedAmount = cInfo.lastClaimedAmountT[_rewardToken];
 
-        // If reward less than 0 – apply min reward
+            // Prevent underflow
+            if (perShareClaimedAmount > perShareAmount) perShareClaimedAmount = perShareAmount;
+
+            uint256 perShareUnclaimedAmount = perShareAmount - perShareClaimedAmount;
+            uint256 currentUnclaimed = (perShareUnclaimedAmount * userStakingTokenTotal) / 1e18;
+
+            // Add pending snapshot reward (from past withdrawals)
+            unclaimedAmount = currentUnclaimed + rewardSnapshot;
+        }
+
+        // Apply min threshold (e.g., 1 wei reward)
         if (unclaimedAmount == 0) unclaimedAmount = MIN_REWARD;
 
+        // Fee deduction
         if (feeConfig.feePercentage > 0) {
             uint256 currentFee = _calculateFee(unclaimedAmount, feeConfig.feePercentage);
             unclaimedAmount -= currentFee;

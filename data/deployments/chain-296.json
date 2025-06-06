@@ -28,16 +28,16 @@
     "TransferLimitOneHundredModule": "0xF29a8A633018984A19315D1080975FA793118076"
   },
   "vault": {
-    "VaultFactory": "0xFae544bDCC642BD920b01C6e796E80064243a29E"
+    "VaultFactory": "0xc28CC8234e8638c03dA52677ABB17BebCBb61F1d"
   },
   "slice": {
-    "SliceFactory": "0x7Af4c6e32690B9919CA026a36F5f5a1cd6970D27"
+    "SliceFactory": "0x25F9F0Fd8d552D81916A66ed95091E0673282f57"
   },
   "autoCompounder": {
-    "AutoCompounderFactory": "0x2d2ADa2A15E54E204a4620f5d5f44C98B609ec39"
+    "AutoCompounderFactory": "0xa214c53526AEd4687AD17BC06042783FDa35d8d8"
   },
   "asyncVault": {
-    "AsyncVaultFactory": "0xdf4b39eD7455d5C3478460d8a9327E1AAaD3d64f"
+    "AsyncVaultFactory": "0x7597EE4972E02948D32652202BD891729b1ee091"
   },
   "libraries": {
     "BuildingTokenLib": "0x9BFF1862f79Dd4AA166d6961b7E0d38399B0C31D",

@@ -55,6 +55,9 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
     // Uniswap swap path to convert from USDC to underlying asset
     address[] internal _path;
 
+    // User => claimed amount
+    mapping(address => uint256) internal _userClaimedRewards;
+
     /**
      * @dev Initializes contract with passed parameters.
      *
@@ -63,6 +66,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
      * @param usdc_ The address of the USDC token.
      * @param name_ The aToken name.
      * @param symbol_ The aToken symbol.
+     * @param operator_ The operator address used in case of Async Vault, e.g. Slice.
      */
     constructor(
         address uniswapV2Router_,
@@ -107,10 +111,12 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         require(assets != 0, "AutoCompounder: Invalid assets amount");
         require(receiver != address(0), "AutoCompounder: Invalid receiver address");
 
+        address sender = _msgSender();
+
         // Calculate aToken amount to mint using exchange rate
         amountToMint = assets.mulDivDown(PRECISION, exchangeRate());
 
-        IERC20(asset()).safeTransferFrom(msg.sender, address(this), assets);
+        IERC20(asset()).safeTransferFrom(sender, address(this), assets);
 
         IERC20(asset()).approve(vault(), assets);
 
@@ -123,7 +129,7 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         // Mint and transfer aToken
         _mint(receiver, amountToMint);
 
-        emit Deposit(receiver, assets, amountToMint);
+        emit Deposit(sender, receiver, assets, amountToMint);
     }
 
     /**
@@ -134,17 +140,22 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         require(aTokenAmount > 0, "AutoCompounder: Invalid aToken amount");
         require(receiver != address(0), "AutoCompounder: Invalid receiver address");
 
+        address sender = _msgSender();
+
         // Calculate underlying amount to withdraw using exchange rate
         underlyingAmount = aTokenAmount.mulDivDown(exchangeRate(), PRECISION);
 
-        // Burn aToken
-        _burn(msg.sender, aTokenAmount);
+        // Claim reward before burn
+        claimExactUserReward(receiver);
 
-        // Withdraw underlying with rewards
+        // Burn aToken
+        _burn(sender, aTokenAmount);
+
+        // Withdraw underlying
         _vault.approve(vault(), underlyingAmount);
         _vault.withdraw(underlyingAmount, receiver, address(this));
 
-        emit Withdraw(msg.sender, aTokenAmount, underlyingAmount);
+        emit Withdraw(sender, aTokenAmount, underlyingAmount);
     }
 
     /**
@@ -177,6 +188,47 @@ contract AutoCompounder is IAutoCompounder, ERC20, Ownable, ERC165 {
         } else {
             revert InsufficientReward(reward);
         }
+    }
+
+    /*///////////////////////////////////////////////////////////////
+                        REWARDS LOGIC
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Claims exact user reward share from Vault.
+     *
+     * @param receiver The reward receiver address.
+     */
+    function claimExactUserReward(address receiver) public {
+        require(receiver != address(0), "AutoCompounder: Invalid reward receiver address");
+
+        address sender = _msgSender();
+        uint256 userReward = getPendingReward(sender);
+
+        _userClaimedRewards[sender] += userReward;
+
+        IRewards(vault()).claimExactReward(usdc(), receiver, userReward);
+
+        emit UserClaimedReward(sender, receiver, userReward);
+    }
+
+    /**
+     * @dev Returns pending user reward share from Vault.
+     *
+     * @param user The compounding participant address.
+     * @return pendingReward The pending reward amount.
+     */
+    function getPendingReward(address user) public view returns (uint256 pendingReward) {
+        require(user != address(0), "AutoCompounder: Invalid user address");
+
+        uint256 totalReward = IRewards(vault()).getUserReward(address(this), usdc());
+
+        uint256 entitled = (balanceOf(user) * totalReward) / totalSupply();
+
+        // All reward was claimed
+        if (entitled < _userClaimedRewards[user]) return 0;
+
+        pendingReward = entitled - _userClaimedRewards[user];
     }
 
     /**

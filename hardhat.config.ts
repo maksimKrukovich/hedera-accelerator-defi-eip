@@ -11,7 +11,7 @@ require("solidity-coverage");
 dotenv.config();
 
 const RPC_URL = process.env.RPC_URL;
-const PRIVATE_KEY = process.env.PRIVATE_KEY || ""; 
+const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
 const COINMARKETCAP_API_KEY = process.env.COINMARKETCAP_API_KEY
 
 const config: HardhatUserConfig = {
