@@ -41,10 +41,12 @@ describe("AsyncVault", function () {
         const VaultToken = await ethers.getContractFactory("VaultToken");
 
         const stakingToken = await VaultToken.deploy(
+            18
         ) as VaultToken;
         await stakingToken.waitForDeployment();
 
         const rewardToken = await VaultToken.deploy(
+            6
         ) as VaultToken;
         await rewardToken.waitForDeployment();
 
@@ -249,6 +251,8 @@ describe("AsyncVault", function () {
             ).to.emit(asyncVault, "Withdraw")
                 .withArgs(owner.address, owner.address, owner.address, amountToRedeem, amountToRedeem);
 
+            const claimTx = await asyncVault.claimAllReward(0, owner.address);
+
             // Check assets received
             await expect(
                 redeemTx
@@ -259,7 +263,7 @@ describe("AsyncVault", function () {
             );
             // Check reward received
             await expect(
-                redeemTx
+                claimTx
             ).to.changeTokenBalance(
                 rewardToken,
                 owner.address,
@@ -385,9 +389,11 @@ describe("AsyncVault", function () {
             // Withdraw
             const withdrawTx = await asyncVault.withdraw(amountToWithdraw, owner.address, owner.address);
 
+            const claimTx = await asyncVault.claimAllReward(0, owner.address);
+
             // Check reward received
             await expect(
-                withdrawTx
+                claimTx
             ).to.changeTokenBalance(
                 rewardToken,
                 owner.address,

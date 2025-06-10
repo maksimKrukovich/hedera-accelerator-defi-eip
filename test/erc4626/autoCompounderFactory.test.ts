@@ -61,6 +61,7 @@ describe("AutoCompounderFactory", function () {
         // Vault
         const VaultToken = await ethers.getContractFactory("VaultToken");
         const stakingToken = await VaultToken.deploy(
+            18
         ) as VaultToken;
         await stakingToken.waitForDeployment();
 
